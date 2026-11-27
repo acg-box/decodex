@@ -386,6 +386,10 @@ impl Shell {
 				shell.open_settings(destination, cx),
 		})
 		.detach();
+		cx.subscribe(&agent, |shell, _, _: &agent_surface::ReportOpened, cx| {
+			shell.show_overlay(WorkspaceOverlay::Report, cx);
+		})
+		.detach();
 		let titlebar = native_titlebar::Titlebar::default();
 		let performance = cx.new(|cx| {
 			crate::ui_performance::PerformanceIsland::new(cx).with_titlebar(titlebar.clone())
@@ -3149,8 +3153,6 @@ fn topbar_controls(
 }
 
 fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyElement {
-	let attention =
-		if index == 2 { shell.agent.read(cx).collaboration_attention_count() } else { 0 };
 	let (active, enabled) = if index == 0 && shell.selected != Destination::Agent {
 		(shell.left_sidebar_visible, true)
 	} else {
@@ -3172,7 +3174,7 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 		.aria_label(label.clone())
 		.aria_expanded(active)
 		.hover_hint(label)
-		.when(active && index == 0, |el| el.bg(ui_theme::rgba(0xffffff0c)))
+		.when(active && matches!(index, 0 | 2), |el| el.bg(ui_theme::rgba(0xffffff0c)))
 		.when(!enabled, |el| el.opacity(0.35))
 		.when(enabled, |el| {
 			el.cursor_pointer().hover(|el| el.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
@@ -3221,25 +3223,6 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 				.opacity(if active { 1. } else { 0.55 })
 				.child(AgentSurface::panel_glyph(index)),
 		)
-		.when(index == 2 && attention > 0, |control| {
-			control.child(
-				gpui::div()
-					.absolute()
-					.top(gpui::px(1.))
-					.right(gpui::px(1.))
-					.min_w(gpui::px(10.))
-					.h(gpui::px(10.))
-					.px(gpui::px(2.))
-					.rounded(gpui::px(ui_theme::SMALL_CONTROL_RADIUS))
-					.flex()
-					.items_center()
-					.justify_center()
-					.text_size(gpui::px(8.))
-					.bg(ui_theme::rgb(ui_theme::WARNING))
-					.text_color(ui_theme::rgb(ui_theme::CANVAS))
-					.child(if attention > 9 { "9+".into() } else { attention.to_string() }),
-			)
-		})
 		.smooth()
 		.enabled(enabled)
 		.into_any_element()

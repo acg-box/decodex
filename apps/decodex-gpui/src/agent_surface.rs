@@ -191,6 +191,7 @@ pub(crate) struct AgentSurface {
 	activity_detail: ActivityDetailState,
 	dock_evidence: Evidence,
 	work_board: work_board::Board,
+	report: Option<OpenReport>,
 	handoffs: Handoffs,
 	deliveries: Entity<deliveries::Panel>,
 	resources: Option<(String, Option<AgentResourcesResult>)>,
@@ -404,6 +405,7 @@ impl AgentSurface {
 			activity_detail: Default::default(),
 			dock_evidence: Default::default(),
 			work_board: work_board::Board::new(cx),
+			report: None,
 			handoffs: Default::default(),
 			resources: None,
 			resources_task: None,
@@ -1501,6 +1503,8 @@ impl AgentSurface {
 		self.workspace.closing_pages.clear();
 		self.workspace.ending_side_chats.clear();
 		self.workspace.page_views.clear();
+		self.workspace.collaboration_open_pages.clear();
+		self.workspace.agent_tree_visible = false;
 
 		self.workspace.graph_expanded = false;
 
@@ -1807,6 +1811,7 @@ impl AgentSurface {
 			return;
 		}
 
+		let previous_page = self.conversation_page();
 		self.selected = self
 			.selected
 			.as_ref()
@@ -1824,6 +1829,7 @@ impl AgentSurface {
 					})
 					.map(|work| work.id.clone())
 			});
+		self.restore_collaboration_sidebar(previous_page);
 	}
 
 	fn apply_result(&mut self, result: Result<AgentSnapshotResult, ()>) {
@@ -2781,6 +2787,16 @@ pub(crate) enum CatalogEvent {
 }
 impl gpui::EventEmitter<CatalogEvent> for AgentSurface {}
 
+struct OpenReport {
+	path: std::path::PathBuf,
+	content: Option<std::io::Result<std::sync::Arc<str>>>,
+	scroll: gpui::ScrollHandle,
+	_read: Task<()>,
+}
+
+pub(super) struct ReportOpened;
+impl gpui::EventEmitter<ReportOpened> for AgentSurface {}
+
 impl AgentSurface {
 	pub(crate) fn render_catalog(
 		&mut self,
@@ -2839,6 +2855,7 @@ struct WorkspaceView {
 	dock_completed: bool,
 	dock_record: Option<String>,
 	page_views: std::collections::BTreeMap<String, PageView>,
+	collaboration_open_pages: HashSet<String>,
 	graph_scope: Option<String>,
 	graph_selected: Option<String>,
 	graph_zoom: f32,
@@ -2910,6 +2927,7 @@ impl Default for WorkspaceView {
 			dock_completed: true,
 			dock_record: None,
 			page_views: Default::default(),
+			collaboration_open_pages: Default::default(),
 			graph_scope: None,
 			graph_selected: None,
 			graph_zoom: 0.85,
@@ -2918,7 +2936,7 @@ impl Default for WorkspaceView {
 			graph_inset: (0.0, 0.0),
 			graph_fit_zoom: 1.,
 			graph_drag: None,
-			agent_tree_visible: true,
+			agent_tree_visible: false,
 			sidebar_visible: true,
 			sidebar_peek: false,
 			sidebar_forced_open: std::cell::Cell::new(false),

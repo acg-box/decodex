@@ -74,6 +74,7 @@ fn live_activity_uses_only_the_current_thread_turn_and_running_action(cx: &mut T
 		s.work_board.briefs.insert(
 			row.key.clone(),
 			Brief {
+				board: Default::default(),
 				review: None,
 				output: None,
 				source_thread: row.thread.clone(),
@@ -175,6 +176,7 @@ fn graph_preview_rejects_old_turns_and_threads_without_repositioning_other_nodes
 		s.work_board.briefs.insert(
 			row.key.clone(),
 			Brief {
+				board: Default::default(),
 				review: None,
 				output: None,
 				source_thread: row.thread.clone(),
@@ -274,6 +276,7 @@ fn global_attention_count_uses_the_same_source_bound_question_as_the_graph(
 		s.work_board.briefs.insert(
 			row.key.clone(),
 			Brief {
+				board: Default::default(),
 				review: None,
 				output: None,
 				source_thread: row.thread.clone(),
@@ -371,6 +374,7 @@ fn missing_token_statistics_notify_only_after_a_successful_completed_turn(cx: &m
 			s.work_board.briefs.insert(
 				row.key.clone(),
 				Brief {
+					board: Default::default(),
 					review: None,
 					output: None,
 					source_thread: row.thread.clone(),
@@ -560,6 +564,7 @@ fn current_native_activity_creates_interaction_and_reverse_completion_edges(
 		s.work_board.briefs.insert(
 			row.key.clone(),
 			Brief {
+				board: Default::default(),
 				review: None,
 				output: None,
 				source_thread: row.thread.clone(),
@@ -692,6 +697,7 @@ fn native_reply_requires_observed_call_and_rejects_changed_binding(cx: &mut Test
 		s.work_board.briefs.insert(
 			row.key.clone(),
 			Brief {
+				board: Default::default(),
 				review: None,
 				output: None,
 				source_thread: row.thread.clone(),
@@ -919,6 +925,7 @@ fn outcome_preserves_current_requests_and_invalidates_old_turns(cx: &mut TestApp
 		s.work_board.briefs.insert(
 			key.clone(),
 			Brief {
+				board: Default::default(),
 				review: None,
 				output: None,
 				source_thread: row.thread.clone(),
@@ -1032,6 +1039,7 @@ fn usage_waits_for_complete_batches_and_retains_the_published_read(cx: &mut Test
 			s.work_board.briefs.insert(
 				row.key.clone(),
 				Brief {
+					board: Default::default(),
 					review: None,
 					output: None,
 					source_thread: row.thread.clone(),
@@ -1101,6 +1109,7 @@ fn archived_coordinator_stays_out_of_the_active_graph_and_statistics(cx: &mut Te
 			s.work_board.briefs.insert(
 				row.key.clone(),
 				Brief {
+					board: Default::default(),
 					review: None,
 					output: None,
 					source_thread: row.thread.clone(),
@@ -1167,6 +1176,7 @@ fn parent_progress_keeps_child_preview_and_geometry(cx: &mut TestAppContext) {
 		s.work_board.briefs.insert(
 			row.key.clone(),
 			Brief {
+				board: Default::default(),
 				review: None,
 				output: None,
 				source_thread: row.thread.clone(),
@@ -1237,6 +1247,7 @@ fn graph_recovers_native_responsibility_from_exact_parent_assignment(cx: &mut Te
 		s.work_board.briefs.insert(
 			parent.key.clone(),
 			Brief {
+				board: Default::default(),
 				review: None,
 				output: None,
 				source_thread: parent.thread.clone(),
@@ -1289,7 +1300,8 @@ fn graph_purposes_keep_manual_names_and_replace_only_incomplete_legacy_prefixes(
 		let request = "Please verify that a browser reconnect preserves the final paragraph and every code block. Report the evidence.";
 
 		s.work_board.briefs.insert(row.key.clone(), Brief {
-			review: None,
+			board: Default::default(),
+review: None,
 			output: None, source_thread: row.thread.clone(), assignments: Default::default(), outcome: None,
 			preview: Some(Preview { turn: "reference".into(), task: request.into(), text: "Checks passed".into(), running: None, recent: vec![] }),
 			question: None, resources: None, relations: vec![], metrics: Default::default(), stamp: s.brief_stamp(&row), read_at: Instant::now(),
@@ -1322,6 +1334,7 @@ fn native_completion_requests_fresh_metrics_without_blank_preview(cx: &mut TestA
 		s.work_board.briefs.insert(
 			row.key.clone(),
 			Brief {
+				board: Default::default(),
 				review: None,
 				output: None,
 				source_thread: row.thread.clone(),
@@ -1431,6 +1444,7 @@ fn observed_collaboration_survives_page_rollover_but_not_another_thread(cx: &mut
 			)
 		};
 		let mut previous = Brief {
+			board: Default::default(),
 			review: None,
 			source_thread: row.thread.clone(),
 			output: None,
@@ -1445,6 +1459,7 @@ fn observed_collaboration_survives_page_rollover_but_not_another_thread(cx: &mut
 			read_at: Instant::now(),
 		};
 		let mut next = Brief {
+			board: Default::default(),
 			review: None,
 			source_thread: row.thread.clone(),
 			output: None,

@@ -1776,7 +1776,7 @@ impl Timeline {
 		self.recovered();
 	}
 
-	pub(super) fn visible_export_items(&self) -> impl Iterator<Item = &AgentTimelineContent> {
+	pub(super) fn visible_items(&self) -> impl DoubleEndedIterator<Item = &AgentTimelineContent> {
 		self.entries.iter().map(|entry| &entry.content).chain(self.summary.iter())
 	}
 

@@ -255,6 +255,7 @@ impl AgentSurface {
 			return;
 		}
 
+		let previous_page = self.conversation_page();
 		self.close_native_agent(cx);
 		self.release_previous_conversation(id, cx);
 
@@ -334,6 +335,8 @@ impl AgentSurface {
 				self.sync_request(cx);
 			}
 		}
+
+		self.restore_collaboration_sidebar(previous_page);
 
 		self.refresh_conversation_cost(cx);
 		cx.notify();
@@ -421,6 +424,7 @@ impl AgentSurface {
 			self.open_page(&root, cx);
 		}
 
+		self.workspace.collaboration_open_pages.remove(id);
 		self.timeline.native_cache.retain(|(work, _), _| work != id);
 		cx.notify();
 	}
@@ -1602,12 +1606,16 @@ impl AgentSurface {
 			.child(self.sidebar_slot(wide, window, cx))
 			.child(body)
 			.child(
-				gpui::deferred(self.sidebar_pane(window, cx))
+				gpui::deferred(self.sidebar_pane(super::workspace_size::Panel::Left, window, cx))
 					.with_priority(if navigation_preview.is_some() { 5 } else { 2 }),
 			)
 			.child(
-				gpui::deferred(clip_for_navigation(self.activity_pane(window, cx)))
-					.with_priority(1),
+				gpui::deferred(clip_for_navigation(self.sidebar_pane(
+					super::workspace_size::Panel::Right,
+					window,
+					cx,
+				)))
+				.with_priority(1),
 			);
 
 		self.workspace_resize_root(cx)
@@ -2581,6 +2589,10 @@ impl AgentSurface {
 
 		self.history = Some(("agent".into(), history));
 		self.selected = Some("agent".into());
+		// The original workspace scenes use two open, equally sized sidebars.
+		self.workspace.agent_tree_visible = true;
+		self.workspace.right_slot_motion.replace(None);
+		self.workspace.right_content_motion.replace(None);
 		self.workspace.pages = vec!["verify".into()];
 		self.workspace.graph_scope = Some("release".into());
 		self.workspace.graph_selected = Some("verify".into());
@@ -3755,7 +3767,9 @@ mod tests {
 		);
 
 		surface.update(visual, |s, cx| {
+			let reader_was_open = s.workspace.agent_tree_visible;
 			s.visual_workspace_fixture(cx);
+			s.workspace.agent_tree_visible = reader_was_open;
 			s.workspace.graph_visible = false;
 
 			s.state = LoadState::Loading;

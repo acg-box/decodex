@@ -45,12 +45,7 @@ impl AgentSurface {
 			.when(opacity == 0., |row| row.invisible());
 		let thread = self.item_thread(item);
 		let pinned = thread.and_then(|t| self.native_pin_state(t)) == Some(true);
-		for (action, label, glyph) in row_commands(pinned) {
-			if ((item.external.is_some() || item.assistant) && action != "pin")
-				|| (thread.is_none() && action == "pin")
-			{
-				continue;
-			}
+		for (action, label, glyph) in self.visible_navigation_actions(item, pinned) {
 			let target = item.clone();
 			let keyboard = target.clone();
 			let row_key = key.to_owned();
@@ -140,6 +135,20 @@ impl AgentSurface {
 			);
 		}
 		row.into_any_element()
+	}
+
+	pub(super) fn visible_navigation_actions(
+		&self,
+		item: &super::Item,
+		pinned: bool,
+	) -> impl Iterator<Item = (&'static str, &'static str, super::Glyph)> {
+		let has_thread = self.item_thread(item).is_some();
+		let external = item.external.is_some();
+		let assistant = item.assistant;
+		row_commands(pinned).into_iter().filter(move |(action, _, _)| match *action {
+			"pin" => has_thread,
+			_ => !external && !assistant,
+		})
 	}
 
 	fn navigation_row_command(

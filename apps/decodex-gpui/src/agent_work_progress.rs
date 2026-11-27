@@ -41,8 +41,15 @@ impl AgentSurface {
 				{
 					return false;
 				}
-				row.native
-					|| row.group <= 1
+				if row.native {
+					// The collaboration sidebar already shows native participants in this turn.
+					return row.group <= 1
+						&& !row
+							.thread
+							.as_deref()
+							.is_some_and(|id| self.current_discussion_includes(id));
+				}
+				row.group <= 1
 					|| self.snapshot.as_ref().is_some_and(|snapshot| {
 						snapshot.work_items.iter().any(|work| {
 							work.id == row.work

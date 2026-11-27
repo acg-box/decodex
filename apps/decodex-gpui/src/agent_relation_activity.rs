@@ -28,6 +28,8 @@ pub(super) struct Operation {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct Output {
+	/// None until older native pages establish whether this was the first dispatch.
+	pub only_turn: Option<bool>,
 	pub turn: String,
 	pub text: String,
 	pub truncated: bool,
@@ -54,7 +56,7 @@ pub(super) enum OperationKind {
 }
 
 /// Retain the returned answer for in-place reading; cards derive their own excerpt.
-pub(super) fn output(entries: &[AgentTimelineEntry]) -> Option<Output> {
+pub(super) fn output(entries: &[AgentTimelineEntry], from_start: bool) -> Option<Output> {
 	let latest = latest_output(entries)?;
 	// Terminal briefs prefer the native final answer. Commentary remains in the live preview.
 	// Missing phases retain the legacy display path; an explicit commentary phase is not a result.
@@ -72,10 +74,28 @@ pub(super) fn output(entries: &[AgentTimelineEntry]) -> Option<Output> {
 	};
 
 	message(Some("final_answer")).or_else(|| message(None)).map(|output| Output {
+		only_turn: single_turn_page(entries, output.turn, from_start),
 		turn: output.turn.into(),
 		text: output.text.into(),
 		truncated: output.truncated,
 	})
+}
+
+/// None means this page belongs to the turn but older entries are still unread.
+pub(super) fn single_turn_page(
+	entries: &[AgentTimelineEntry],
+	turn: &str,
+	from_start: bool,
+) -> Option<bool> {
+	if entries.iter().any(|entry| match &entry.content {
+		AgentTimelineContent::Item { turn_id, .. }
+		| AgentTimelineContent::TurnBoundary { turn_id, .. } => turn_id != turn,
+		_ => false,
+	}) {
+		Some(false)
+	} else {
+		from_start.then_some(true)
+	}
 }
 
 pub(super) fn latest_output(entries: &[AgentTimelineEntry]) -> Option<OutputRef<'_>> {
@@ -369,7 +389,7 @@ mod tests {
 		let entries = vec![final_answer, commentary.clone()];
 
 		assert_eq!(
-			activity::output(&entries).unwrap().text,
+			activity::output(&entries, true).unwrap().text,
 			"Complete result.\n\nFinal paragraph."
 		);
 		assert_eq!(
@@ -378,34 +398,46 @@ mod tests {
 			"live preview keeps its existing behavior"
 		);
 		assert!(
-			activity::output(&[commentary]).is_none(),
+			activity::output(&[commentary], true).is_none(),
 			"an explicit commentary phase is not a returned result"
 		);
 		assert_eq!(
-			activity::output(&[item("legacy", "agentMessage", "Legacy result")]).unwrap().text,
+			activity::output(&[item("legacy", "agentMessage", "Legacy result")], true)
+				.unwrap()
+				.text,
 			"Legacy result"
 		);
+	}
+
+	#[test]
+	fn single_turn_attribution_requires_the_start_of_native_history() {
+		let latest = [item("check", "agentMessage", "Confirmed")];
+		let older = [item("check", "commandExecution", "Read source")];
+		assert_eq!(activity::output(&latest, false).unwrap().only_turn, None);
+		assert_eq!(activity::single_turn_page(&older, "check", true), Some(true));
+		assert_eq!(activity::single_turn_page(&older, "different", false), Some(false));
 	}
 
 	#[test]
 	fn output_retains_the_returned_answer_and_excludes_other_turns_and_reasoning() {
 		let mut entries = vec![item("old", "agentMessage", "Previous result")];
 
-		assert_eq!(activity::output(&entries).unwrap().text, "Previous result");
+		assert_eq!(activity::output(&entries, true).unwrap().text, "Previous result");
 
 		entries.push(item("next", "userMessage", "Run the new check"));
 
-		assert!(activity::output(&entries).is_none());
+		assert!(activity::output(&entries, true).is_none());
 
 		entries.push(item("next", "reasoning", "Private reasoning"));
 
-		assert!(activity::output(&entries).is_none());
+		assert!(activity::output(&entries, true).is_none());
 
 		entries.push(item("next", "agentMessage", "**Compatibility checks passed.**"));
 
 		assert_eq!(
-			activity::output(&entries),
+			activity::output(&entries, true),
 			Some(Output {
+				only_turn: Some(false),
 				turn: "next".into(),
 				text: "**Compatibility checks passed.**".into(),
 				truncated: false
@@ -414,7 +446,7 @@ mod tests {
 
 		entries.push(item("next", "agentMessage", &"result ".repeat(1_000)));
 
-		let answer = activity::output(&entries).unwrap();
+		let answer = activity::output(&entries, true).unwrap();
 
 		assert_eq!(answer.text, "result ".repeat(1_000));
 		assert!(activity::text(&answer.text).chars().count() <= 181);
@@ -425,7 +457,7 @@ mod tests {
 			*truncated = true;
 		}
 
-		assert!(activity::output(&entries).unwrap().truncated);
+		assert!(activity::output(&entries, true).unwrap().truncated);
 	}
 
 	#[test]

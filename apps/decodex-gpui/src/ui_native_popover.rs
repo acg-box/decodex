@@ -52,6 +52,18 @@ struct Content {
 	focus: Option<FocusHandle>,
 }
 impl Content {
+	fn bounds(&self, height: Pixels) -> Bounds<Pixels> {
+		let size = gpui::size(self.width, height);
+		let origin = if self.preview && !self.attached {
+			self.trigger.map_or(self.origin, |trigger| {
+				super::hover_origin(trigger, size, self.hover_viewport)
+			})
+		} else {
+			super::surface_origin(self.origin, size, self.viewport, self.attached)
+		};
+		Bounds::new(origin, size)
+	}
+
 	fn is_modal(&self) -> bool {
 		self.attached && self.focus.is_some()
 	}
@@ -68,6 +80,16 @@ struct Panel {
 }
 
 impl Panel {
+	fn check_hover(&mut self, position: Point<Pixels>, cx: &mut App) {
+		if let Some(content) = &self.content
+			&& matches!(content.placement, PopoverPlacement::Hover { dismiss_on_exit: true, .. })
+			&& let Some(trigger) = content.trigger
+			&& !super::inside_hover_preview(trigger, content.bounds(self.height), position)
+		{
+			self.close(cx);
+		}
+	}
+
 	fn close(&mut self, cx: &mut App) {
 		self.resize = None;
 		if let Some(content) = self.content.take() {
@@ -80,27 +102,19 @@ impl Panel {
 
 	fn place(&mut self, window: &mut Window, cx: &mut App) {
 		let Some(content) = &self.content else { return };
-		let size = gpui::size(content.width, self.height);
-		let origin = if content.preview && !content.attached {
-			content.trigger.map_or(content.origin, |trigger| {
-				super::hover_origin(trigger, size, content.hover_viewport)
-			})
-		} else {
-			super::surface_origin(content.origin, size, content.viewport, content.attached)
-		};
+		let bounds = content.bounds(self.height);
 		if let Some(surface) = &mut self.surface {
 			surface.set_radius(content.geometry.radius);
-			if surface.place(Bounds::new(origin, gpui::size(content.width, self.height))) {
+			if surface.place(bounds) {
 				window.bounds_changed(cx);
 			}
 			if let Some(clip) = content.geometry.clip {
 				surface.clip_content(clip);
 			}
 			if content.attached {
-				let contour = content
-					.geometry
-					.clip
-					.unwrap_or_else(|| Bounds::new(gpui::point(gpui::px(0.), gpui::px(0.)), size));
+				let contour = content.geometry.clip.unwrap_or_else(|| {
+					Bounds::new(gpui::point(gpui::px(0.), gpui::px(0.)), bounds.size)
+				});
 				surface.occlude_attached_content(contour, content.viewport_clip);
 			}
 		}
@@ -119,6 +133,9 @@ impl Render for Panel {
 		let opacity = content.geometry.opacity;
 		let focus = content.focus.clone().unwrap_or_else(|| self.focus.clone());
 		let foreground = (content.render)(window, cx);
+		let track_exit =
+			matches!(content.placement, PopoverPlacement::Hover { dismiss_on_exit: true, .. });
+		let owner = cx.entity().downgrade();
 		let measured = cx.entity().downgrade();
 		let root = gpui::div()
 			.relative()
@@ -161,7 +178,24 @@ impl Render for Panel {
 			.child(
 				gpui::canvas(
 					|_, _, _| (),
-					|_, _, window, _| super::observe_pointer_departure(window),
+					move |_, _, window, _| {
+						super::observe_pointer_departure(window);
+						if track_exit {
+							window.on_mouse_event(
+								move |event: &gpui::MouseExitEvent, phase, _, cx| {
+									if phase.capture() {
+										let _ = owner.update(cx, |panel, cx| {
+											if let Some(content) = &panel.content {
+												let position = content.bounds(panel.height).origin
+													+ event.position;
+												panel.check_hover(position, cx);
+											}
+										});
+									}
+								},
+							);
+						}
+					},
 				)
 				.absolute()
 				.inset_0(),
@@ -170,7 +204,7 @@ impl Render for Panel {
 			let _ = measured.update(cx, |panel, cx| {
 				if let Some(content) = panel.content.as_ref().filter(|content| !content.attached) {
 					let height = size.height.max(gpui::px(1.));
-					panel.height = if matches!(content.placement, PopoverPlacement::Hover(_)) {
+					panel.height = if matches!(content.placement, PopoverPlacement::Hover { .. }) {
 						super::popover_height(&mut panel.resize, height, window, cx)
 					} else {
 						height
@@ -243,7 +277,7 @@ pub(super) fn render(mut popover: Popover, window: &mut Window, cx: &mut App) ->
 				viewport,
 				hover_viewport,
 				width: match placement {
-					PopoverPlacement::Hover(width) => width,
+					PopoverPlacement::Hover { width, .. } => width,
 					_ => bounds.size.width - gpui::px(inset * 2.),
 				},
 				viewport_clip: None,
@@ -262,6 +296,15 @@ pub(super) fn render(mut popover: Popover, window: &mut Window, cx: &mut App) ->
 		},
 		move |_, _, window, _| {
 			super::observe_pointer_departure(window);
+			if matches!(placement, PopoverPlacement::Hover { dismiss_on_exit: true, .. }) {
+				super::observe_preview_pointer(window, move |position, cx| {
+					if let Some(child) =
+						cx.global::<Hosts>().children.get(&parent.window_id()).copied()
+					{
+						let _ = child.update(cx, |panel, _, cx| panel.check_hover(position, cx));
+					}
+				});
+			}
 			window.on_mouse_event(move |event: &MouseDownEvent, phase, _, cx| {
 				if !phase.capture() {
 					return;

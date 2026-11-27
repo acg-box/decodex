@@ -5,16 +5,10 @@
 mod reference_fixture;
 
 pub(super) use collaboration::State as Collaboration;
+#[cfg(any(test, feature = "visual-capture"))] use gpui::IntoElement;
 
-use gpui::{
-	AnyElement, Div, IntoElement, SharedString,
-	prelude::{FluentBuilder as _, ParentElement, Styled},
-};
-
-use crate::shell::agent_surface::{
-	ui_theme::{self, FIELD_MATERIAL, TEXT_MUTED, WARNING},
-	work_board::{AgentSurface, Context, Row},
-};
+use crate::shell::agent_surface::work_board::{AgentSurface, Context, Row};
+use gpui::AnyElement;
 
 struct Entry {
 	row: Row,
@@ -54,7 +48,7 @@ impl AgentSurface {
 			self.select_workbench_agent("release", cx);
 		}
 		if matches!(page, "workbench-history" | "assistant-workspace") {
-			self.work_board.collaboration_expanded = None;
+			self.work_board.reference = Default::default();
 		}
 
 		cx.notify();
@@ -110,6 +104,7 @@ impl AgentSurface {
 				read_at: None,
 			};
 			let output = (row.group == 2).then(|| super::activity::Output {
+				only_turn: Some(false),
 				truncated: false,
 				turn: "fixture-operation".into(),
 				text: match row.key.as_str() {
@@ -130,6 +125,7 @@ impl AgentSurface {
 				self.work_board.briefs.insert(
 					row.key.clone(),
 					super::Brief {
+						board: Default::default(),
 						review: None,
 						output,
 						source_thread: row.thread.clone(),
@@ -192,6 +188,7 @@ impl AgentSurface {
 		// Inspection alone is not a read receipt. Open conversation owns that transition.
 		self.handoffs.read_on_open = None;
 		self.workspace.agent_tree_visible = true;
+		self.peek_conversation(key, cx);
 		self.work_board.view.picked_agent = Some(key.into());
 		self.work_board.view.picked_project = None;
 		self.work_board.view.edge = None;
@@ -229,7 +226,7 @@ impl AgentSurface {
 						"Answer needed"
 					}
 					.into(),
-					reason: "Respond in the conversation.".into(),
+					reason: String::new(),
 					result: false,
 					request: Some(event.id),
 					needs_user: true,
@@ -301,100 +298,48 @@ impl AgentSurface {
 			|| format!("workbench-item-{key}"),
 			|event| format!("workbench-item-request-{event}"),
 		);
-		let number = self.relation_agent_number(&entry.row);
-		let identity = self.relation_agent_name(&entry.row);
+		let subtitle =
+			if entry.reason.is_empty() { entry.label.clone() } else { entry.reason.clone() };
+		self.reference_row(
+			action_key,
+			entry.row.title.clone(),
+			subtitle,
+			Some(crate::shell::workspace_symbols::Symbol::BellAttention),
+			move |s, cx| {
+				let Some(row) = s.board_rows().into_iter().find(|row| row.key == key) else {
+					return;
+				};
 
-		gpui::div()
-			.flex_none()
-			.w_full()
-			.min_w_0()
-			.p(gpui::px(10.))
-			.rounded(gpui::px(12.))
-			.bg(ui_theme::rgba(FIELD_MATERIAL))
-			.when(entry.needs_user, |card| {
-				card.border_1().border_color(ui_theme::rgb(WARNING).opacity(0.25))
-			})
-			.child(
-				gpui::div()
-					.flex()
-					.items_center()
-					.gap(gpui::px(6.))
-					.text_size(gpui::px(11.))
-					.line_height(gpui::px(18.))
-					.child(
-						gpui::div()
-							.flex_none()
-							.size(gpui::px(4.))
-							.rounded_full()
-							.bg(ui_theme::rgb(WARNING)),
-					)
-					.child(format!("{number}: {identity}")),
-			)
-			.child(note(entry.label.clone()).mt_1())
-			.when(!entry.reason.is_empty(), |card| {
-				card.child(
-					note(entry.reason.clone())
-						.text_size(gpui::px(11.))
-						.line_height(gpui::px(16.))
-						.mt_1()
-						.mb_1(),
-				)
-			})
-			.child(
-				self.workspace_action(
-					action_key,
-					if entry.result {
-						"Review result"
-					} else if entry.row.native {
-						"Open conversation"
-					} else if entry.request.is_some() {
-						"Open request"
-					} else if entry.needs_user {
-						"Open review"
-					} else {
-						"Open conversation"
+				if let Some(event) = request {
+					if !s.snapshot.as_ref().is_some_and(|snapshot| {
+						snapshot
+							.pending_events
+							.iter()
+							.any(|pending| pending.id == event && pending.work_item_id == row.work)
+					}) {
+						return;
 					}
-					.into(),
-					move |s, cx| {
-						let Some(row) = s.board_rows().into_iter().find(|row| row.key == key)
-						else {
-							return;
-						};
 
-						if let Some(event) = request {
-							if !s.snapshot.as_ref().is_some_and(|snapshot| {
-								snapshot.pending_events.iter().any(|pending| {
-									pending.id == event && pending.work_item_id == row.work
-								})
-							}) {
-								return;
-							}
+					if !row
+						.thread
+						.as_deref()
+						.is_some_and(|thread| s.conversation_matches(&row.work, thread))
+					{
+						return;
+					}
+					s.workspace.graph_expanded = false;
 
-							s.workspace.graph_expanded = false;
+					s.request = None;
+					s.request_task = None;
 
-							s.open_page(&row.work, cx);
-
-							s.request = None;
-							s.request_task = None;
-
-							s.load_request(event, cx);
-						} else {
-							s.open_graph_agent(&row, cx);
-						}
-					},
-					cx,
-				),
-			)
-			.into_any_element()
+					s.load_request(event, cx);
+				} else {
+					s.peek_conversation(&row.key, cx);
+				}
+			},
+			cx,
+		)
 	}
-}
-
-fn note(text: impl Into<SharedString>) -> Div {
-	gpui::div()
-		.text_size(gpui::px(12.))
-		.line_height(gpui::px(18.))
-		.text_color(ui_theme::rgb(TEXT_MUTED))
-		.child(text.into())
 }
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
-//! Dwell and departure grace for surfaces revealed by pointer intent.
+//! Entry dwell and immediate departure for surfaces revealed by pointer intent.
 use gpui::{Context, Task};
 
-use super::{HOVER_CLOSE_DELAY as CLOSE_DELAY, HOVER_OPEN_DELAY as OPEN_DELAY};
+use super::HOVER_OPEN_DELAY;
 
 /// Keep one pending target without restarting its timer on internal movement.
 pub(crate) struct HoverIntent<K> {
@@ -50,9 +50,11 @@ impl<K: Clone + Eq + 'static> HoverIntent<K> {
 		if next == current {
 			return;
 		}
-		let delay = if inside { OPEN_DELAY } else { CLOSE_DELAY };
 		self.pending = Some(cx.spawn(async move |owner, cx| {
-			cx.background_executor().timer(delay).await;
+			// Apply departures in this event cycle, after sibling hover handlers have run.
+			if inside {
+				cx.background_executor().timer(HOVER_OPEN_DELAY).await;
+			}
 			let _ = owner.update(cx, move |owner, cx| {
 				super::begin_interaction();
 				apply(owner, next, cx);
@@ -63,7 +65,7 @@ impl<K: Clone + Eq + 'static> HoverIntent<K> {
 
 #[cfg(test)]
 mod tests {
-	use super::{CLOSE_DELAY, HoverIntent, OPEN_DELAY};
+	use super::{HOVER_OPEN_DELAY, HoverIntent};
 	use gpui::{AppContext as _, Context};
 	use std::time::Duration;
 
@@ -95,25 +97,26 @@ mod tests {
 	) {
 		let state = cx.new(|_| Fixture::default());
 		state.update(cx, |s, cx| s.hover(1, true, cx));
-		elapse(cx, OPEN_DELAY / 2);
+		elapse(cx, HOVER_OPEN_DELAY / 2);
 		state.update(cx, |s, cx| s.hover(1, false, cx));
-		elapse(cx, OPEN_DELAY);
+		elapse(cx, HOVER_OPEN_DELAY);
 		state.read_with(cx, |s, _| assert!(s.changes.is_empty()));
 		state.update(cx, |s, cx| s.hover(1, true, cx));
-		elapse(cx, OPEN_DELAY / 2);
+		elapse(cx, HOVER_OPEN_DELAY / 2);
 		state.update(cx, |s, cx| s.hover(1, true, cx));
-		elapse(cx, OPEN_DELAY - OPEN_DELAY / 2 - Duration::from_millis(1));
+		elapse(cx, HOVER_OPEN_DELAY - HOVER_OPEN_DELAY / 2 - Duration::from_millis(1));
 		state.read_with(cx, |s, _| assert!(s.open.is_none()));
 		elapse(cx, Duration::from_millis(1));
 		state.read_with(cx, |s, _| assert_eq!(s.open, Some(1)));
 		state.update(cx, |s, cx| s.hover(1, false, cx));
-		elapse(cx, CLOSE_DELAY / 2);
+		cx.run_until_parked();
+		state.read_with(cx, |s, _| assert_eq!(s.open, None));
 		state.update(cx, |s, cx| s.hover(1, true, cx));
-		elapse(cx, CLOSE_DELAY);
-		state.read_with(cx, |s, _| assert_eq!(s.changes, vec![Some(1)]));
+		elapse(cx, HOVER_OPEN_DELAY);
+		state.read_with(cx, |s, _| assert_eq!(s.open, Some(1)));
 		state.update(cx, |s, cx| s.hover(1, false, cx));
-		elapse(cx, CLOSE_DELAY);
-		state.read_with(cx, |s, _| assert_eq!(s.changes, vec![Some(1), None]));
+		cx.run_until_parked();
+		state.read_with(cx, |s, _| assert_eq!(s.changes, vec![Some(1), None, Some(1), None]));
 	}
 
 	#[gpui::test]
@@ -126,13 +129,13 @@ mod tests {
 			s.hover(2, true, cx);
 			s.hover(1, false, cx);
 		});
-		elapse(cx, OPEN_DELAY);
+		elapse(cx, HOVER_OPEN_DELAY);
 		state.read_with(cx, |s, _| assert_eq!(s.open, Some(2)));
 		state.update(cx, |s, cx| {
 			s.hover(2, false, cx);
 			s.hover.cancel();
 		});
-		elapse(cx, CLOSE_DELAY);
+		cx.run_until_parked();
 		state.read_with(cx, |s, _| assert_eq!(s.changes, vec![Some(2)]));
 	}
 }

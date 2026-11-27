@@ -2680,7 +2680,8 @@ impl AgentSurface {
 			.find(|r| r.key == "release")
 			.expect("relation fixture owner");
 
-		self.work_board.briefs.insert(row.key.clone(),Brief{review:None,output:None,source_thread:row.thread.clone(),assignments:Default::default(),outcome:None,preview:None,question:None,metrics:Default::default(),resources:None,stamp:self.brief_stamp(&row),read_at:std::time::Instant::now(),relations:vec![("review-wait".into(),decodex_protocol::AgentCollaborationDto { model: None, reasoning_effort: None,sender_thread_id:"fixture-release".into(),receiver_thread_ids:vec!["fixture-reviewer".into()],tool:"wait".into(),status:"completed".into(),prompt:String::new(),results:vec![decodex_protocol::AgentCollaborationResultDto{thread_id:"fixture-reviewer".into(),status:"completed".into(),message:"Cancellation can leave the sign-in button disabled. Add a regression test before release.".into()}]})]});
+		self.work_board.briefs.insert(row.key.clone(),Brief{board: Default::default(),
+review:None,output:None,source_thread:row.thread.clone(),assignments:Default::default(),outcome:None,preview:None,question:None,metrics:Default::default(),resources:None,stamp:self.brief_stamp(&row),read_at:std::time::Instant::now(),relations:vec![("review-wait".into(),decodex_protocol::AgentCollaborationDto { model: None, reasoning_effort: None,sender_thread_id:"fixture-release".into(),receiver_thread_ids:vec!["fixture-reviewer".into()],tool:"wait".into(),status:"completed".into(),prompt:String::new(),results:vec![decodex_protocol::AgentCollaborationResultDto{thread_id:"fixture-reviewer".into(),status:"completed".into(),message:"Cancellation can leave the sign-in button disabled. Add a regression test before release.".into()}]})]});
 
 		for owner in ["flow", "verify"] {
 			let row = self
@@ -2698,6 +2699,7 @@ impl AgentSurface {
 			self.work_board.briefs.insert(
 				row.key.clone(),
 				Brief {
+					board: Default::default(),
 					review: None,
 					output: None,
 					source_thread: row.thread.clone(),
@@ -2898,6 +2900,7 @@ mod fit_tests {
 				.find(|node| node.key == row.key)
 				.unwrap();
 			let brief = s.work_board.briefs.entry(row.key.clone()).or_insert_with(|| Brief {
+				board: Default::default(),
 				review: None,
 				output: None,
 				source_thread: row.thread.clone(),
@@ -3092,7 +3095,7 @@ mod fit_tests {
 	}
 
 	#[gpui::test]
-	fn layouts_and_map_navigation_preserve_the_main_chat_and_collaboration(
+	fn changing_map_layout_preserves_the_reference_and_selecting_an_agent_previews_its_chat(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(super::super::tests::fixture);
@@ -3108,7 +3111,6 @@ mod fit_tests {
 			s.composer.update(cx, |input, cx| input.set_content("Preserve the Main draft", cx));
 
 			let main = (s.selected.clone(), s.native_agents.selected.clone());
-			let collaboration = s.work_board.collaboration_expanded.clone();
 			let original = s.relation_graph();
 			let identities: BTreeSet<_> = original.nodes.iter().map(|n| n.key.clone()).collect();
 			let edges: BTreeSet<_> = original
@@ -3118,7 +3120,9 @@ mod fit_tests {
 				.collect();
 
 			for mode in layout::Mode::ALL {
+				let before = s.work_board.reference.clone();
 				s.switch_relation_layout(mode, cx);
+				assert_eq!(s.work_board.reference, before);
 
 				s.work_board.view.motion = None;
 
@@ -3149,7 +3153,10 @@ mod fit_tests {
 				assert!((r.x + r.width / 2. - 815. / 2.).abs() < 0.01);
 				assert!((r.y + r.height / 2. - 683. / 2.).abs() < 0.01);
 				assert_eq!((s.selected.clone(), s.native_agents.selected.clone()), main);
-				assert_eq!(s.work_board.collaboration_expanded, collaboration);
+				assert!(matches!(&s.work_board.reference,
+					crate::shell::agent_surface::work_board::ReferencePage::Conversation { key, thread, .. }
+					if key == "density-006" && thread == "density-thread-6"
+				));
 				assert_eq!(s.composer.read(cx).content(), "Preserve the Main draft");
 			}
 		});
@@ -4255,7 +4262,8 @@ mod fit_tests {
 		s.work_board.briefs.insert(
 			row.key.clone(),
 			Brief {
-				review: None,
+				board: Default::default(),
+review: None,
 				output: None,
 				source_thread: row.thread.clone(),
 				assignments: Default::default(),
