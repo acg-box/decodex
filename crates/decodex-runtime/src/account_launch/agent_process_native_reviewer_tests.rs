@@ -139,7 +139,7 @@ async fn installed_native_live_reviewer_changes_only_the_selected_turn() {
 
 	let mut session = NativeSession::start(&binary, home.path());
 
-	time::timeout(Duration::from_secs(60), async {
+	let (thread, turn, command) = time::timeout(Duration::from_secs(60), async {
 		let started = session.client.thread_start(serde_json::json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"on-request","approvalsReviewer":"auto_review","sandbox":"read-only","dynamicTools":[{"name":"pause_fixture","description":"Wait for fixture input","inputSchema":{"type":"object","properties":{}}}]})).await.unwrap();
 		let thread = started["thread"]["id"].as_str().unwrap();
 		let turn = session.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Run the isolated reviewer fixture."}]})).await.unwrap();
@@ -163,6 +163,7 @@ async fn installed_native_live_reviewer_changes_only_the_selected_turn() {
 		assert_eq!(method, "item/commandExecution/requestApproval");
 		assert_eq!(params["turnId"], turn);
 
+		let command = params["itemId"].as_str().expect("command item ID").to_owned();
 		let pending_approval = session.client.server_request_guard(&id, &method, &params).unwrap();
 		let guard = session.client.history_guard(session.client.history_revision()).unwrap();
 
@@ -195,11 +196,23 @@ async fn installed_native_live_reviewer_changes_only_the_selected_turn() {
 
 		assert_eq!(bodies.len(), 6);
 		assert_eq!(bodies.iter().filter(|body| body["client_metadata"]["x-openai-subagent"] == "guardian").count(), 1);
+		(thread.to_owned(), turn.to_owned(), command)
 	}).await.expect("native reviewer routing deadline");
 
 	drop(session);
-
 	backend.abort();
+
+	let reopened = NativeSession::start(&binary, home.path());
+	let items = reopened.client.thread_read_turn_items(&thread, &turn).await.unwrap();
+	let statuses: Vec<_> = items
+		.as_array()
+		.unwrap()
+		.iter()
+		.filter(|item| item["type"] == "commandExecution" && item["id"] == command)
+		.map(|item| &item["status"])
+		.collect();
+
+	assert_eq!(statuses, ["declined"], "reopened history must retain the user's decision");
 }
 
 async fn next_request(events: &mut Receiver<ServerEvent>) -> (RequestId, String, Value) {
