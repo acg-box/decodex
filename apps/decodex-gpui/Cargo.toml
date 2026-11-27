@@ -28,7 +28,7 @@ roxmltree            = { workspace = true }
 serde                = { workspace = true }
 serde_json           = { workspace = true }
 sha2                 = { workspace = true }
-time                 = { workspace = true }
+time                 = { workspace = true, features = ["parsing"] }
 tokio                = { workspace = true, features = ["process"] }
 unicode-segmentation = { workspace = true }
 unicode-width        = { workspace = true }

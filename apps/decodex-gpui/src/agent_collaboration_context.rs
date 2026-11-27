@@ -171,19 +171,24 @@ impl AgentSurface {
 			topics
 				.retain(|posts| posts.iter().any(|p| p.posted_by_thread.as_deref() == Some(agent)));
 		}
-		let evidence = turn.and_then(|turn| {
-			self.round_evidence(
-				&row.work,
-				(owner, turn),
-				&topics,
-				&self.turn_participants(owner, turn, rows),
-				(agent != owner).then_some(agent),
-				cx,
-			)
-		});
-		let mut populated = evidence.is_some();
-		body = body.children(evidence);
-		if !populated && let Some(output) = self.work_output(row) {
+		let mut has_evidence = false;
+		let mut populated = false;
+		if let Some(turn) = turn {
+			let members = self.turn_participants(owner, turn, rows);
+			let selected = (agent != owner).then_some(agent);
+			if let Some(timing) = self.agent_timing(owner, turn, &members, selected, cx) {
+				body = body.child(timing);
+				populated = true;
+			}
+			if let Some(evidence) =
+				self.round_evidence(&row.work, (owner, turn), &topics, &members, selected, cx)
+			{
+				body = body.child(evidence);
+				has_evidence = true;
+				populated = true;
+			}
+		}
+		if !has_evidence && let Some(output) = self.work_output(row) {
 			let files: BTreeSet<_> = markdown::referenced_files(output.text).collect();
 			if !files.is_empty() {
 				populated = true;

@@ -192,12 +192,16 @@ impl AgentSurface {
 
 					Participant {
 						spawned_here: false,
+						timing: Default::default(),
 						name,
 						task,
 						state: ParticipantState::Assigned,
 						reply: String::new(),
 					}
 				});
+				if let Some(at) = activity.as_ref().and_then(|a| a.native_timestamp_ms) {
+					member.timing.record(&call.tool, at);
+				}
 				if !call.prompt.trim().is_empty()
 					&& (member.task.is_empty()
 						|| matches!(
@@ -395,6 +399,7 @@ impl AgentSurface {
 #[derive(Clone)]
 pub(super) struct Participant {
 	spawned_here: bool,
+	pub(super) timing: super::timing::Timing,
 	pub(super) name: String,
 	pub(super) task: String,
 	pub(super) state: ParticipantState,

@@ -5,6 +5,7 @@ use crate::{shell::agent_surface::work_board::board_topics::Post, ui_motion::Hov
 use turn_collaboration::{Participant, ParticipantState};
 #[path = "agent_collaboration_context.rs"] mod context;
 #[path = "agent_report_reader.rs"] mod report_reader;
+#[path = "agent_collaboration_timing.rs"] mod timing;
 use decodex_protocol::{
 	AgentCollaborationDto, AgentTimelineContent, ItemContextRequest, ItemContextResult, WireText,
 };
@@ -243,8 +244,8 @@ impl AgentSurface {
 					.into_iter()
 					.find(|posts| posts.first().is_some_and(|p| &p.thread_id == topic));
 				let body = match posts {
-					Some(posts) =>
-						reading_body().children(posts.iter().map(|p| self.board_post(p, &rows, cx))),
+					Some(posts) => reading_body()
+						.children(posts.iter().map(|p| self.board_post(p, &posts[0], &rows, cx))),
 					None => reading_body().child(note("This topic is no longer available.")),
 				};
 				("Board topic", (body, "detail"))
@@ -496,6 +497,10 @@ impl AgentSurface {
 			.map(|t| self.board_topics(&work.id, t, scope.map(|(_, turn)| turn), &rows))
 			.unwrap_or_default();
 		if let Some((thread, turn)) = thread.zip(turn) {
+			if let Some(timing) = self.agent_timing(thread, turn, &roster, None, cx) {
+				body = body.child(timing);
+				populated = true;
+			}
 			if let Some(evidence) =
 				self.round_evidence(&work.id, (thread, turn), &topics, &roster, None, cx)
 			{
@@ -632,7 +637,13 @@ impl AgentSurface {
 		body
 	}
 
-	fn board_post(&self, post: &Post, rows: &[Row], cx: &mut Context<Self>) -> AnyElement {
+	fn board_post(
+		&self,
+		post: &Post,
+		opener: &Post,
+		rows: &[Row],
+		cx: &mut Context<Self>,
+	) -> AnyElement {
 		let reply = post.message_id != post.thread_id;
 		let source = post
 			.posted_by_thread
@@ -646,7 +657,9 @@ impl AgentSurface {
 				.filter(|name| !name.is_empty())
 				.unwrap_or_else(|| post.author.strip_prefix("/root/").unwrap_or(&post.author))
 		};
-		let heading = if reply {
+		let heading = if let Some(ms) = post.time_since_topic(opener) {
+			format!("{author} replied after {}", crate::ui_time::duration(ms))
+		} else if reply {
 			format!("{author} replied")
 		} else if post.text.trim_end().ends_with(['?', '？']) {
 			format!("{author} asked")
