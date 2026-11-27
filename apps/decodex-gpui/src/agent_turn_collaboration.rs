@@ -163,45 +163,41 @@ impl AgentSurface {
 			if turn_id != turn || call.sender_thread_id != thread {
 				continue;
 			}
-			let task_label = activity
-				.as_ref()
-				.filter(|a| a.kind == "subAgentActivity")
-				.and_then(|a| a.detail.rsplit('/').next())
-				.filter(|name| !name.is_empty())
-				.map(|name| self.participant_task_label(name))
-				.unwrap_or_default();
 			for id in call.receiver_thread_ids.iter().filter(|id| id.as_str() != thread) {
 				let member = members.entry(id.clone()).or_insert_with(|| {
 					let row = rows
 						.iter()
 						.find(|r| r.work == binding.work && r.thread.as_ref() == Some(id));
+					let path_name = activity
+						.as_ref()
+						.filter(|a| a.kind == "subAgentActivity")
+						.and_then(|a| a.detail.rsplit('/').next())
+						.filter(|name| !name.is_empty());
+					let task_name =
+						path_name.map(|n| self.participant_task_label(n)).unwrap_or_default();
 					let name = row
 						.map(participant_name)
 						.filter(|s| !s.is_empty())
 						.map(str::to_owned)
 						.unwrap_or_else(|| {
-							if task_label.is_empty() { "Agent".into() } else { task_label.clone() }
+							if task_name.is_empty() { "Agent".into() } else { task_name.clone() }
 						});
-					let task = if task_label.is_empty() {
+					let task = if task_name.is_empty() {
 						row.filter(|r| r.native && r.title != r.owner)
 							.map(|r| r.title.clone())
 							.unwrap_or_default()
 					} else {
-						task_label.clone()
+						task_name
 					};
 
 					Participant {
 						spawned_here: false,
-						label: String::new(),
 						name,
 						task,
 						state: ParticipantState::Assigned,
 						reply: String::new(),
 					}
 				});
-				if !task_label.is_empty() {
-					member.label.clone_from(&task_label);
-				}
 				if !call.prompt.trim().is_empty()
 					&& (member.task.is_empty()
 						|| matches!(
@@ -392,7 +388,6 @@ impl AgentSurface {
 #[derive(Clone)]
 pub(super) struct Participant {
 	spawned_here: bool,
-	label: String,
 	pub(super) name: String,
 	pub(super) task: String,
 	pub(super) state: ParticipantState,
@@ -401,11 +396,7 @@ pub(super) struct Participant {
 
 impl Participant {
 	pub(super) fn report_labels(&self) -> (String, String) {
-		let title = if self.spawned_here && !self.label.is_empty() {
-			self.label.clone()
-		} else {
-			activity::wording::message(&self.reply)
-		};
+		let title = activity::wording::message(&self.reply);
 		if title.is_empty() || title == self.name {
 			(self.name.clone(), String::new())
 		} else {
