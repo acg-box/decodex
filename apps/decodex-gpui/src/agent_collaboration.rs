@@ -47,7 +47,7 @@ pub(in super::super) struct State {
 	source: Option<EntityId>,
 	task: Option<Task<()>>,
 	read_at: Option<Instant>,
-	earlier: bool,
+
 	source_open: Option<String>,
 	original_text: Option<String>,
 	original_read: Option<Task<()>>,

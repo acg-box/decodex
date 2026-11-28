@@ -9,6 +9,20 @@ pub(super) fn order(post: &Post) -> (&str, &str) {
 	(post.created_at.trim_end_matches('Z'), &post.message_id)
 }
 
+pub(super) fn time_since_topic(post: &Post, opener: &Post) -> Option<u64> {
+	if post.message_id == post.thread_id || post.thread_id != opener.message_id {
+		return None;
+	}
+	let at = |post: &Post| {
+		time::OffsetDateTime::parse(
+			&post.created_at,
+			&time::format_description::well_known::Rfc3339,
+		)
+		.ok()
+	};
+	u64::try_from((at(post)? - at(opener)?).whole_milliseconds()).ok()
+}
+
 pub(super) fn from_entry(entry: &AgentTimelineContent, source: &str) -> Option<Post> {
 	let AgentTimelineContent::Item { activity: Some(activity), text, .. } = entry else {
 		return None;

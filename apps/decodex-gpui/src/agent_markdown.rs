@@ -20,7 +20,7 @@ use std::{
 use gpui::{
 	AnyElement, App, FontStyle, HighlightStyle, KeyDownEvent, RenderOnce, StrikethroughStyle,
 };
-use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag};
+use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 use ui_theme::{
 	BLUE, TEXT_MUTED,
 	foreground::{PRIMARY, READING_LINE_HEIGHT, READING_SIZE},
@@ -167,6 +167,15 @@ impl RenderOnce for CopyButton {
 	}
 }
 
+/// Explicit local Markdown links are the same file references the reader can open.
+pub(super) fn referenced_files(source: &str) -> impl Iterator<Item = std::path::PathBuf> + '_ {
+	Parser::new_ext(source, Options::ENABLE_TABLES).filter_map(|event| match event {
+		Event::Start(Tag::Link { dest_url, .. }) if dest_url.starts_with('/') =>
+			Some(std::path::PathBuf::from(without_line_column(&dest_url))),
+		_ => None,
+	})
+}
+
 pub(super) fn without_line_column(path: &str) -> &str {
 	let mut path = path;
 
@@ -189,6 +198,57 @@ pub(super) fn copy_button(key: &str, label: &'static str, text: String) -> AnyEl
 
 pub(super) fn response_copy_button(key: &str, label: &'static str, text: String) -> AnyElement {
 	CopyButton { key: key.into(), label, text, rich: false }.into_any_element()
+}
+
+/// Keep the first content paragraph, skipping headings and introductory labels.
+pub(super) fn first_paragraph(source: &str) -> String {
+	let mut paragraph = String::new();
+	let mut fallback = String::new();
+
+	for event in Parser::new_ext(source, Options::ENABLE_TABLES) {
+		match event {
+			Event::Text(text) | Event::Code(text) => paragraph.push_str(&text),
+			Event::SoftBreak | Event::HardBreak => paragraph.push(' '),
+			Event::End(TagEnd::Heading(_)) => {
+				fallback = std::mem::take(&mut paragraph);
+			},
+			Event::End(TagEnd::Paragraph | TagEnd::Item | TagEnd::CodeBlock) => {
+				if paragraph.trim().is_empty() {
+					continue;
+				}
+				if paragraph.trim_end().ends_with(':') {
+					fallback = std::mem::take(&mut paragraph);
+				} else {
+					break;
+				}
+			},
+			_ => {},
+		}
+	}
+
+	if paragraph.trim().is_empty() {
+		paragraph = fallback;
+	}
+
+	paragraph.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+pub(super) fn report_excerpt(text: &str) -> String {
+	let plain = first_paragraph(text);
+	let mut chars = plain.chars();
+	let excerpt: String = chars.by_ref().take(240).collect();
+
+	if chars.next().is_none() {
+		return excerpt;
+	}
+	// Prefer a complete sentence when the next one would not fit.
+	let end =
+		unicode_segmentation::UnicodeSegmentation::split_sentence_bound_indices(plain.as_str())
+			.map(|(start, sentence)| start + sentence.len())
+			.take_while(|end| *end <= excerpt.len())
+			.last();
+	let visible = end.map_or(excerpt.as_str(), |end| &plain[..end]);
+	format!("{}…", visible.trim_end())
 }
 
 pub(super) fn plain_text(text: &str) -> String {
@@ -1085,6 +1145,7 @@ mod tests {
 
 	#[gpui::test]
 	fn message_text_can_be_selected_and_copied_without_editing(cx: &mut gpui::TestAppContext) {
+		cx.update(crate::composer_input::bind_keys);
 		let (_, visual) =
 			cx.add_window_view(|_, _| CopyPreview { text: "Read **中文** text".into() });
 

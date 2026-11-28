@@ -280,10 +280,10 @@ pub(crate) fn menu_row(id: impl Into<gpui::SharedString>, enabled: bool) -> Stat
 		.w_full()
 		.min_w_0()
 		.min_h(gpui::px(CONTROL_SIZE))
-		.px(gpui::px(8.))
+		.px(gpui::px(POPOVER_PADDING))
 		.py(gpui::px(4.))
 		.rounded(gpui::px(6.))
-		.text_size(gpui::px(12.))
+		.text_size(gpui::px(COMPACT_BODY_SIZE))
 		.line_height(gpui::px(18.))
 		.text_color(rgb(TEXT))
 		.when(enabled, |d| {

@@ -16,36 +16,87 @@ impl AgentSurface {
 		activity::wording::purpose(&name.replace('_', " "))
 	}
 
-	pub(super) fn latest_discussion_turn(&self, thread: &str) -> Option<&str> {
-		self.timeline.native.binding.as_ref().filter(|b| b.thread == thread)?;
-		self.timeline.native.visible_items().rev().find_map(|entry| match entry {
+	pub(super) fn latest_thread_turn(&self, thread: &str) -> Option<&str> {
+		self.timeline.native.thread_items(thread).rev().find_map(|entry| match entry {
 			AgentTimelineContent::Item { turn_id, .. }
 			| AgentTimelineContent::TurnBoundary { turn_id, .. } => Some(turn_id.as_str()),
 			_ => None,
 		})
 	}
 
+	/// A later solo follow-up must not displace the last collaboration.
+	pub(super) fn latest_discussion_turn(&self, thread: &str) -> Option<&str> {
+		self.timeline.native.thread_items(thread).rev().find_map(|entry| {
+			let AgentTimelineContent::Item { turn_id, collaboration, .. } = entry else {
+				return None;
+			};
+			(collaboration.as_ref().is_some_and(|call| {
+				call.sender_thread_id == thread && !call.receiver_thread_ids.is_empty()
+			}) || board_topics::from_entry(entry, thread).is_some())
+			.then_some(turn_id.as_str())
+		})
+	}
+
+	/// Only the owning conversation can state the outcome of this particular turn.
+	pub(super) fn collaboration_outcome(
+		&self,
+		thread: &str,
+		turn: &str,
+	) -> Option<(&str, &str, Option<i64>)> {
+		let mut completed = false;
+		let mut ended_at = None;
+		for content in self.timeline.native.thread_items(thread).rev() {
+			match content {
+				AgentTimelineContent::TurnBoundary {
+					turn_id,
+					completed: true,
+					status,
+					started_at_micros,
+					duration_ms,
+					..
+				} if turn_id == turn => {
+					if matches!(
+						status.as_deref(),
+						Some("failed" | "interrupted" | "cancelled" | "canceled")
+					) {
+						return None;
+					}
+					completed = true;
+					ended_at = started_at_micros
+						.zip(*duration_ms)
+						.and_then(|(start, ms)| start.checked_add_unsigned(ms.checked_mul(1_000)?));
+				},
+				AgentTimelineContent::Item { turn_id, item_id, kind, phase, text, .. }
+					if turn_id == turn
+						&& kind == "agentMessage"
+						&& !text.trim().is_empty()
+						&& (phase.as_deref() == Some("final_answer")
+							|| (completed && phase.is_none())) =>
+				{
+					return Some((item_id, text, ended_at));
+				},
+				_ => {},
+			}
+		}
+		None
+	}
+
 	/// Build the history menu from named collaboration on this thread. No global agent list.
 	pub(super) fn earlier_discussions(&self, thread: &str, current: &str) -> Vec<(String, String)> {
-		if !self.timeline.native.binding.as_ref().is_some_and(|binding| binding.thread == thread) {
-			return Vec::new();
-		}
 		let mut turns = BTreeMap::<&str, Vec<String>>::new();
+		let mut prompts = BTreeMap::new();
 		let mut order = Vec::new();
-		for entry in &self.timeline.native.entries {
-			let AgentTimelineContent::Item { turn_id, collaboration, activity, .. } =
-				&entry.content
+		for entry in self.timeline.native.thread_items(thread) {
+			let AgentTimelineContent::Item { turn_id, kind, text, collaboration, activity, .. } =
+				entry
 			else {
 				continue;
 			};
-			if turn_id == current
-				|| self
-					.timeline
-					.native
-					.source_threads
-					.get(&entry.position)
-					.is_some_and(|source| source != thread)
-			{
+			if turn_id == current {
+				continue;
+			}
+			if kind == "userMessage" && !text.trim().is_empty() {
+				prompts.entry(turn_id.as_str()).or_insert(text.as_str());
 				continue;
 			}
 			let title = if let Some(call) = collaboration
@@ -58,7 +109,7 @@ impl AgentSurface {
 					.and_then(|a| a.detail.rsplit('/').next())
 					.map(|n| self.participant_task_label(n))
 					.unwrap_or_else(|| activity::wording::purpose(&call.prompt))
-			} else if let Some(post) = board_topics::from_entry(&entry.content, thread) {
+			} else if let Some(post) = board_topics::from_entry(entry, thread) {
 				format!("#{}", post.channel_name)
 			} else {
 				continue;
@@ -76,8 +127,13 @@ impl AgentSurface {
 			.rev()
 			.map(|turn| {
 				let names = &turns[turn];
-				let title =
-					if names.is_empty() { "Agent discussion".into() } else { names.join(", ") };
+				let title = if let Some(prompt) = prompts.get(turn) {
+					activity::wording::message(prompt)
+				} else if names.is_empty() {
+					"Agent discussion".into()
+				} else {
+					names.join(", ")
+				};
 				(turn.to_owned(), title)
 			})
 			.collect()
@@ -136,12 +192,16 @@ impl AgentSurface {
 
 					Participant {
 						spawned_here: false,
+						timing: Default::default(),
 						name,
 						task,
 						state: ParticipantState::Assigned,
 						reply: String::new(),
 					}
 				});
+				if let Some(at) = activity.as_ref().and_then(|a| a.native_timestamp_ms) {
+					member.timing.record(&call.tool, at);
+				}
 				if !call.prompt.trim().is_empty()
 					&& (member.task.is_empty()
 						|| matches!(
@@ -154,6 +214,13 @@ impl AgentSurface {
 				// follow-up it can still contain the reply to the previous dispatch.
 				match call.tool.as_str() {
 					"spawnAgent" | "subAgentActivity/started" => member.spawned_here = true,
+					// Codex also emits an interaction when the lead steers a child before
+					// its first report. The child is still completing the original assignment.
+					"subAgentActivity/interacted"
+						if matches!(
+							member.state,
+							ParticipantState::Working | ParticipantState::Assigned
+						) => {},
 					"followupTask"
 					| "sendInput"
 					| "sendMessage"
@@ -225,7 +292,7 @@ impl AgentSurface {
 			// Use a live child state only for the current dispatch. A reused child's state
 			// cannot be applied to an older turn.
 			if matches!(member.state, ParticipantState::Working | ParticipantState::Assigned)
-				&& (live || self.latest_discussion_turn(thread) == Some(turn))
+				&& (live || self.latest_thread_turn(thread) == Some(turn))
 				&& let Some(agent) = self
 					.native_agents
 					.lists
@@ -334,22 +401,11 @@ impl AgentSurface {
 #[derive(Clone)]
 pub(super) struct Participant {
 	spawned_here: bool,
+	pub(super) timing: super::timing::Timing,
 	pub(super) name: String,
 	pub(super) task: String,
 	pub(super) state: ParticipantState,
 	pub(super) reply: String,
-}
-
-impl Participant {
-	pub(super) fn row_labels(&self) -> (String, String) {
-		let task = activity::wording::purpose(&self.task);
-		let status = self.state.short_label();
-		if task.is_empty() || task == self.name {
-			(self.name.clone(), status.into())
-		} else {
-			(task, format!("{} ({status})", self.name))
-		}
-	}
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -364,16 +420,7 @@ pub(super) enum ParticipantState {
 	Assigned,
 }
 impl ParticipantState {
-	pub(super) fn task_section(self) -> Option<&'static str> {
-		match self {
-			Self::NeedsInput | Self::NeedsApproval | Self::Failed | Self::Stopped =>
-				Some("Needs attention"),
-			Self::Working => Some("In progress"),
-			Self::Assigned | Self::Replied | Self::Finished => None,
-		}
-	}
-
-	fn short_label(self) -> &'static str {
+	pub(super) fn short_label(self) -> &'static str {
 		match self {
 			Self::NeedsApproval => "Approval needed",
 			Self::NeedsInput => "Input needed",
@@ -452,27 +499,97 @@ mod tests {
 				s.earlier_discussions("ref-sage", "next"),
 				vec![("first".into(), "Check the totals".into())]
 			);
+			s.timeline.native.entries.insert(
+				0,
+				serde_json::from_value(json!({
+					"position": 0,
+					"content": {"type":"item","turn_id":"first","item_id":"ask","kind":"userMessage",
+						"text":"Can five guests attend? Check the venue.","truncated":false,"attachments":[]}
+				}))
+				.unwrap(),
+			);
+			assert_eq!(s.earlier_discussions("ref-sage", "next")[0].1, "Can five guests attend?");
 			assert!(s.earlier_discussions("other", "next").is_empty());
 		});
-		visual.update(crate::ui_frame::draw_frame);
-		assert!(visual.debug_bounds("earlier-turn-first").is_none());
-		let toggle = visual.debug_bounds("collaboration-earlier").unwrap();
-		visual.simulate_click(toggle.center(), Default::default());
-		visual.update(crate::ui_frame::draw_current_frame);
-		visual.executor().advance_clock(std::time::Duration::from_millis(240));
 		visual.update(crate::ui_frame::draw_frame);
 		let earlier = visual.debug_bounds("earlier-turn-first").unwrap();
 		visual.simulate_click(earlier.center(), Default::default());
 		visual.update(crate::ui_frame::draw_frame);
 		surface.read_with(visual, |s, _| {
 			assert!(matches!(&s.work_board.reference,
-				ReferencePage::Discussion { turn, thread } if turn == "first" && thread == "ref-sage"
+				ReferencePage::Discussion { turn, thread, title } if turn == "first" && thread == "ref-sage" && title == "Can five guests attend?"
 			))
 		});
+		let report = visual.debug_bounds("contributor-first-child-a").unwrap();
+		visual.simulate_click(report.center(), Default::default());
+		visual.update(crate::ui_frame::draw_frame);
+		surface.read_with(visual, |s, _| {
+			assert!(
+				matches!(&s.work_board.reference, ReferencePage::Participant { turn, thread, agent }
+				if turn == "first" && thread == "ref-sage" && agent == "child-a")
+			);
+			assert_eq!(s.selected.as_deref(), Some("sage"));
+		});
+		assert!(visual.debug_bounds("earlier-turn-first").is_none());
 		let back = visual.debug_bounds("reference-back").unwrap();
 		visual.simulate_click(back.center(), Default::default());
 		visual.update(crate::ui_frame::draw_frame);
-		assert!(visual.debug_bounds("collaboration-earlier").is_some());
+		assert!(visual.debug_bounds("contributor-first-child-a").is_some());
+		let back = visual.debug_bounds("reference-back").unwrap();
+		visual.simulate_click(back.center(), Default::default());
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(visual.debug_bounds("earlier-turn-first").is_some());
+	}
+
+	#[gpui::test]
+	fn returning_after_a_solo_turn_keeps_the_same_lead_reply(cx: &mut TestAppContext) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, _| {
+			s.timeline.native.binding = Some(Binding {
+				work: "sage".into(),
+				thread: "ref-sage".into(),
+				account: "test".into(),
+			});
+			let reply = |position, turn, phase, text| {
+				serde_json::from_value(json!({
+					"position": position,
+					"content": {
+						"type": "item", "turn_id": turn, "item_id": format!("item-{position}"),
+						"kind": "agentMessage", "phase": phase, "text": text,
+						"truncated": false, "attachments": []
+					}
+				}))
+				.unwrap()
+			};
+			let boundary = |position, status| {
+				serde_json::from_value(json!({
+					"position": position,
+					"content": {
+						"type": "turn_boundary", "turn_id": "workshop", "completed": true,
+						"status": status, "started_at_micros": 1_000_000, "duration_ms": 42
+					}
+				}))
+				.unwrap()
+			};
+			s.timeline.native.entries = vec![
+				event(1, "workshop", "spawnAgent", "catering", ""),
+				reply(2, "workshop", "commentary", "Checking lunch capacity."),
+				reply(3, "workshop", "final_answer", "Invite three today."),
+				boundary(4, "completed"),
+				reply(5, "email", "final_answer", "Workshop reminder"),
+				reply(6, "workshop", "final_answer", "A different conversation"),
+			];
+			s.timeline.native.source_threads.insert(6, "other".into());
+			assert_eq!(s.latest_thread_turn("ref-sage"), Some("email"));
+			assert_eq!(s.latest_discussion_turn("ref-sage"), Some("workshop"));
+			assert_eq!(
+				s.collaboration_outcome("ref-sage", "workshop"),
+				Some(("item-3", "Invite three today.", Some(1_042_000)))
+			);
+			s.timeline.native.entries[3] = boundary(4, "interrupted");
+			assert!(s.collaboration_outcome("ref-sage", "workshop").is_none());
+			assert!(s.collaboration_outcome("other", "workshop").is_none());
+		});
 	}
 
 	#[gpui::test]
@@ -509,6 +626,17 @@ mod tests {
 				"24 cartons"
 			);
 			assert!(s.turn_participants("ref-sage", "next", &rows)["ref-iris"].reply.is_empty());
+			// A message to a running child can be interleaved between its compact
+			// spawn and completion in the same native turn.
+			s.timeline
+				.native
+				.entries
+				.insert(1, event(10, "first", "subAgentActivity/interacted", "ref-iris", ""));
+			assert_eq!(
+				s.turn_participants("ref-sage", "first", &rows)["ref-iris"].reply,
+				"24 cartons"
+			);
+			s.timeline.native.entries.remove(1);
 			s.timeline.native.entries.push(event(
 				5,
 				"first",
@@ -550,7 +678,9 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn only_unfinished_or_blocked_participants_keep_task_rows(cx: &mut TestAppContext) {
+	fn participant_status_tracks_the_native_agent_until_its_report_arrives(
+		cx: &mut TestAppContext,
+	) {
 		let surface = cx.new(|cx| {
 			let mut s = AgentSurface::new(cx);
 			s.visual_workspace_fixture(cx);
@@ -575,10 +705,10 @@ mod tests {
 				vec![event(1, "now", "subAgentActivity/started", "ref-iris", "")];
 			let rows = s.factory_rows();
 			for (status, section) in [
-				("active", "In progress"),
-				("waitingOnUserInput", "Needs attention"),
-				("waitingOnApproval", "Needs attention"),
-				("systemError", "Needs attention"),
+				("active", "Working"),
+				("waitingOnUserInput", "Input needed"),
+				("waitingOnApproval", "Approval needed"),
+				("systemError", "Failed"),
 			] {
 				s.native_agents
 					.lists
@@ -589,8 +719,8 @@ mod tests {
 					.unwrap()
 					.status = status.into();
 				assert_eq!(
-					s.turn_participants("ref-sage", "now", &rows)["ref-iris"].state.task_section(),
-					Some(section)
+					s.turn_participants("ref-sage", "now", &rows)["ref-iris"].state.short_label(),
+					section
 				);
 			}
 			s.timeline.native.entries.extend([
@@ -599,19 +729,83 @@ mod tests {
 			]);
 			let participants = s.turn_participants("ref-sage", "now", &rows);
 			assert_eq!(participants["ref-iris"].reply, "Ready for review.");
-			assert_eq!(participants["ref-iris"].state.task_section(), None);
+			assert_eq!(participants["ref-iris"].state.short_label(), "Replied");
+		});
+	}
+
+	#[gpui::test]
+	fn graph_inspection_filters_citations_and_replaces_the_previous_agent(cx: &mut TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1536.), gpui::px(1024.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.visual_workbench_page("workbench", cx);
+			s.workspace.graph_expanded = false;
+			s.open_work_conversation("sage", None, cx);
+			s.timeline.native.binding = Some(Binding {
+				work: "sage".into(),
+				thread: "ref-sage".into(),
+				account: "test".into(),
+			});
+			s.timeline.native.entries = vec![
+				event(1, "first", "spawnAgent", "ref-iris", ""),
+				event(
+					2,
+					"first",
+					"wait",
+					"ref-iris",
+					"[Iris file](/tmp/iris.txt:4) and [shared](/tmp/common.txt:8)",
+				),
+				event(3, "first", "spawnAgent", "child-b", ""),
+				event(
+					4,
+					"first",
+					"wait",
+					"child-b",
+					"[Different file](/tmp/sibling.txt) and [shared](/tmp/common.txt:12)",
+				),
+			];
+			let iris = s
+				.factory_rows()
+				.into_iter()
+				.find(|r| r.thread.as_deref() == Some("ref-iris"))
+				.unwrap();
+			s.select_workbench_agent(&iris.key, cx);
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(visual.debug_bounds("cited-file-/tmp/common.txt").is_some());
+		assert!(visual.debug_bounds("cited-file-/tmp/iris.txt").is_some());
+		assert!(visual.debug_bounds("cited-file-/tmp/sibling.txt").is_none());
+		assert!(visual.debug_bounds("citation-/tmp/common.txt-child-b").is_some());
+		surface.update(visual, |s, cx| {
+			let peer = s
+				.factory_rows()
+				.into_iter()
+				.find(|r| r.thread.as_deref() == Some("ref-lin"))
+				.unwrap();
+			s.select_workbench_agent(&peer.key, cx);
+		});
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(visual.debug_bounds("cited-file-/tmp/iris.txt").is_none());
+		let back = visual.debug_bounds("reference-back").unwrap();
+		visual.simulate_click(back.center(), Default::default());
+		surface.read_with(visual, |s, _| {
+			assert_eq!(s.selected.as_deref(), Some("sage"));
+			assert_eq!(s.work_board.reference, ReferencePage::Overview);
+			assert!(s.work_board.view.picked_agent.is_none());
 		});
 	}
 
 	#[gpui::test]
 	fn unread_parent_groups_sibling_posts_by_native_topic(cx: &mut TestAppContext) {
-		let surface = cx.new(|cx| {
-			let mut s = AgentSurface::new(cx);
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1536.), gpui::px(1024.)));
+		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.visual_workbench_page("workbench", cx);
-			s
-		});
-		surface.update(cx, |s, _| {
+			s.workspace.graph_expanded = false;
+			s.open_work_conversation("sage", None, cx);
+			s.toggle_agent_tree(cx);
 			let second = s.native_agents.lists["mira"]
 				.iter()
 				.find(|a| a.thread_id == "ref-lin")
@@ -649,6 +843,27 @@ mod tests {
 			);
 			assert!(s.board_topics("sage", "ref-sage", Some("different-turn"), &rows).is_empty());
 		});
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(visual.debug_bounds("inspect-post-answer").is_none());
+		let topic = visual.debug_bounds("topic-topic").unwrap();
+		visual.simulate_click(topic.center(), Default::default());
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(visual.debug_bounds("inspect-post-topic").is_some());
+		assert!(visual.debug_bounds("inspect-post-another").is_none());
+		let answer = visual.debug_bounds("inspect-post-answer").unwrap();
+		visual.simulate_click(answer.center(), Default::default());
+		visual.update(crate::ui_frame::draw_frame);
+		surface.read_with(visual, |s, _| {
+			assert_eq!(s.selected.as_deref(), Some("sage"));
+			assert!(
+				matches!(&s.work_board.reference, ReferencePage::Conversation { thread, message: Some(id), .. }
+				if thread == "ref-lin" && id == "answer")
+			);
+		});
+		let back = visual.debug_bounds("reference-back").unwrap();
+		visual.simulate_click(back.center(), Default::default());
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(visual.debug_bounds("inspect-post-answer").is_some());
 	}
 
 	#[gpui::test]

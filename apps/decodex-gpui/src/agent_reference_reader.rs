@@ -1,8 +1,14 @@
 //! The right sidebar reads a selected source without navigating the main conversation.
 #[path = "agent_turn_collaboration.rs"] mod turn_collaboration;
 use super::*;
-use turn_collaboration::ParticipantState;
+use crate::{
+	shell::agent_surface::work_board::board_topics::{self, Post},
+	ui_motion::HoverHint as _,
+};
+use turn_collaboration::{Participant, ParticipantState};
+#[path = "agent_collaboration_context.rs"] mod context;
 #[path = "agent_report_reader.rs"] mod report_reader;
+#[path = "agent_collaboration_timing.rs"] mod timing;
 use decodex_protocol::{
 	AgentCollaborationDto, AgentTimelineContent, ItemContextRequest, ItemContextResult, WireText,
 };
@@ -51,6 +57,9 @@ impl AgentSurface {
 		let board = &mut self.work_board;
 		(board.reference, board.reference_scroll) =
 			board.reference_history.pop().unwrap_or_default();
+		if board.reference == ReferencePage::Overview && board.view.picked_agent.take().is_some() {
+			board.focus = None;
+		}
 		self.clear_reference_source();
 		ui_motion::begin_interaction();
 		cx.notify();
@@ -110,6 +119,7 @@ impl AgentSurface {
 	) -> AnyElement {
 		self.reference_control(id, label.into(), action, cx)
 			.justify_start()
+			.px(gpui::px(0.))
 			.bg(gpui::transparent_black())
 			.text_color(ui_theme::rgb(BLUE))
 			.child(workspace_symbols::icon_sized(icon, 13.))
@@ -128,7 +138,13 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let arrow = format!("reference-arrow-{id}");
-		let label = if detail.is_empty() { title.clone() } else { format!("{title}. {detail}") };
+		let label = if detail.is_empty() {
+			title.clone()
+		} else if title.ends_with(['.', '?', '!', '。', '？', '！']) {
+			format!("{title} {detail}")
+		} else {
+			format!("{title}. {detail}")
+		};
 		self.reference_control(id, label, action, cx)
 			.w_full()
 			.rounded(gpui::px(ui_theme::NAVIGATION_ROW_RADIUS))
@@ -136,7 +152,7 @@ impl AgentSurface {
 			.items_center()
 			.bg(gpui::transparent_black())
 			.min_h(gpui::px(ui_theme::CONTROL_SIZE))
-			.pl(gpui::px(ui_theme::NAVIGATION_LEADING_SIZE))
+			.px(gpui::px(0.))
 			.py(gpui::px(3.))
 			.gap(gpui::px(8.))
 			.when_some(icon, |row, icon| {
@@ -155,6 +171,7 @@ impl AgentSurface {
 					.child(
 						gpui::div()
 							.line_clamp(2)
+							.text_ellipsis()
 							.text_size(gpui::px(ui_theme::NAVIGATION_TITLE_SIZE))
 							.line_height(gpui::px(19.))
 							.text_color(ui_theme::rgb(PRIMARY))
@@ -164,6 +181,7 @@ impl AgentSurface {
 						col.child(
 							gpui::div()
 								.line_clamp(1)
+								.text_ellipsis()
 								.text_size(gpui::px(ui_theme::NAVIGATION_DETAIL_SIZE))
 								.font_weight(FontWeight::NORMAL)
 								.text_color(ui_theme::rgb(SECONDARY))
@@ -188,7 +206,53 @@ impl AgentSurface {
 	) -> AnyElement {
 		let page = &self.work_board.reference;
 		let (title, (body, state)) = match page {
-			ReferencePage::Overview => ("Collaboration", self.reference_index(None, cx)),
+			ReferencePage::Overview => {
+				let child = self.native_agents.selected.as_ref().filter(|(owner, thread)| {
+					self.selected.as_ref() == Some(owner)
+						&& self
+							.conversation_record(owner)
+							.is_some_and(|work| work.codex_thread_id.as_ref() != Some(thread))
+				});
+				let rows = self.factory_rows();
+				if let Some(row) = child.and_then(|(work, thread)| {
+					rows.iter().find(|row| &row.work == work && row.thread.as_ref() == Some(thread))
+				}) {
+					("Agent context", (self.agent_context(row, &rows, cx), "content"))
+				} else if child.is_some() {
+					(
+						"Agent context",
+						(empty_collaboration("Loading agent context", None), "loading"),
+					)
+				} else {
+					("Collaboration", self.reference_index(None, cx))
+				}
+			},
+			ReferencePage::Participant { thread, turn, agent } => {
+				let rows = self.factory_rows();
+				let members = self.turn_participants(thread, turn, &rows);
+				let source = rows.iter().find(|row| row.thread.as_ref() == Some(agent));
+				let (title, body) = match members.get(agent) {
+					Some(member) => self.participant_reader(turn, agent, member, source),
+					None => (
+						"Agent activity",
+						reading_body().child(note("This contribution is unavailable.")),
+					),
+				};
+				(title, (body, "detail"))
+			},
+			ReferencePage::Topic { work, thread, historical_turn, topic } => {
+				let rows = self.factory_rows();
+				let posts = self
+					.board_topics(work, thread, historical_turn.as_deref(), &rows)
+					.into_iter()
+					.find(|posts| posts.first().is_some_and(|p| &p.thread_id == topic));
+				let body = match posts {
+					Some(posts) => reading_body()
+						.children(posts.iter().map(|p| self.board_post(p, &posts[0], &rows, cx))),
+					None => reading_body().child(note("This topic is no longer available.")),
+				};
+				("Board topic", (body, "detail"))
+			},
 			ReferencePage::Exchange(id) => {
 				let cases =
 					self.collaboration_cases(&self.relation_graph().edges, &self.factory_rows());
@@ -205,25 +269,33 @@ impl AgentSurface {
 				let rows = self.factory_rows();
 				let row = rows.iter().find(|r| &r.key == key && r.thread.as_ref() == Some(thread));
 				(
-					"Agent activity",
+					if message.is_some() { "Board message" } else { "Agent context" },
 					(
-						row.map(|r| self.conversation_reader(r, &rows, message.as_deref()))
-							.unwrap_or_else(|| {
-								reading_body()
-									.child(note("This conversation is no longer available."))
-							}),
+						row.map(|r| match message {
+							Some(message) => self.conversation_reader(r, &rows, message),
+							None => self.agent_context(r, &rows, cx),
+						})
+						.unwrap_or_else(|| {
+							reading_body().child(note("This conversation is no longer available."))
+						}),
 						"detail",
 					),
 				)
 			},
-			ReferencePage::Discussion { turn, thread } =>
-				("Earlier discussion", self.reference_index(Some((thread, turn)), cx)),
+			ReferencePage::Discussion { turn, thread, title } => {
+				let (body, state) = self.reference_index(Some((thread, turn)), cx);
+				(
+					"Earlier discussion",
+					(reading_body().child(reader_title(title)).child(body), state),
+				)
+			},
 		};
 		let overview = matches!(page, ReferencePage::Overview);
 		let back_label = match self.work_board.reference_history.last().map(|(page, _)| page) {
 			Some(ReferencePage::Discussion { .. }) => "Back to earlier discussion",
 			Some(ReferencePage::Exchange(_)) => "Back to exchange",
-			Some(ReferencePage::Conversation { .. }) => "Back to agent activity",
+			Some(ReferencePage::Topic { .. }) => "Back to topic",
+			Some(ReferencePage::Conversation { .. }) => "Back to agent context",
 			_ => "Back to collaboration",
 		};
 		let scroll_key = match page {
@@ -238,6 +310,10 @@ impl AgentSurface {
 					.unwrap_or("none")
 			),
 			ReferencePage::Exchange(id) => format!("reference-exchange-{id}"),
+			ReferencePage::Participant { turn, agent, .. } =>
+				format!("reference-report-{turn}-{agent}"),
+			ReferencePage::Topic { thread, topic, .. } =>
+				format!("reference-topic-{thread}-{topic}"),
 			ReferencePage::Conversation { thread, message, .. } => format!(
 				"reference-conversation-{thread}-{}",
 				message.as_deref().unwrap_or("activity")
@@ -252,7 +328,7 @@ impl AgentSurface {
 			.flex()
 			.items_center()
 			.gap(gpui::px(4.))
-			.px(gpui::px(8.))
+			.px(gpui::px(ui_theme::CONVERSATION_INSET))
 			.py(gpui::px(5.))
 			.when(!overview, |header| {
 				header.child(
@@ -303,7 +379,7 @@ impl AgentSurface {
 							.min_w_0()
 							.min_h_0()
 							.overflow_y_scroll()
-							.px(gpui::px(8.))
+							.px(gpui::px(ui_theme::CONVERSATION_INSET))
 							.pb(gpui::px(10.))
 							.child(
 								body.flex_none()
@@ -343,12 +419,7 @@ impl AgentSurface {
 			.map(|(_, thread)| thread.as_str())
 			.or(work.codex_thread_id.as_deref());
 		let latest = thread.and_then(|thread| self.latest_discussion_turn(thread));
-		let turn = scope.map(|(_, turn)| turn).or_else(|| {
-			(thread == work.codex_thread_id.as_deref())
-				.then_some(work.active_turn_id.as_deref())
-				.flatten()
-				.or(latest)
-		});
+		let turn = scope.map(|(_, turn)| turn).or(latest);
 		let thread = scope.map(|(thread, _)| thread).or(thread);
 		let rows = self.factory_rows();
 		let roster = thread
@@ -394,141 +465,68 @@ impl AgentSurface {
 						&& case.source_turn.as_deref() == turn)
 			})
 			.collect();
+		let pending_here = |case: &Exchange| {
+			scope.is_none()
+				&& case.question.as_ref().is_some_and(|question| {
+					question.pending
+						&& question.work_id == work.id
+						&& Some(question.thread_id.as_str()) == thread
+				})
+		};
 		let mut populated = false;
-		if scope.is_none() {
+		if scope.is_none() && self.workspace.graph_expanded {
 			let entries = self.workbench_entries();
 			for entry in entries.iter().filter(|e| {
 				e.needs_user && belongs(&e.row) && self.collaboration_entry_visible(e, &cases)
 			}) {
 				if !populated {
-					body = body.child(section("Needs your input"));
+					body = body.child(index_section("Needs your input", populated));
 				}
 				body = body.child(self.workbench_entry(entry, cx));
+				populated = true;
+			}
+		}
+		if scope.is_none() {
+			for case in cases.iter().filter(|case| pending_here(case)) {
+				if !populated {
+					body = body.child(index_section("Needs your input", populated));
+				}
+				body = body.child(self.exchange_row(case, belongs(&case.from), cx));
 				populated = true;
 			}
 		}
 		let topics = thread
 			.map(|t| self.board_topics(&work.id, t, scope.map(|(_, turn)| turn), &rows))
 			.unwrap_or_default();
-		let authors: BTreeSet<_> =
-			topics.iter().flatten().filter_map(|post| post.posted_by_thread.as_deref()).collect();
-		// A native child can also report directly to its parent without using the Board.
-		let mut direct_replies = roster
-			.iter()
-			.filter(|(id, member)| {
-				member.state == ParticipantState::Replied
-					&& !member.reply.is_empty()
-					&& !authors.contains(id.as_str())
-			})
-			.peekable();
-		if !topics.is_empty() || direct_replies.peek().is_some() {
-			populated = true;
-			body = body.child(section("Discussion"));
-			for (index, topic) in topics.iter().enumerate() {
-				let mut group =
-					reading_body().px(gpui::px(8.)).pb(gpui::px(5.)).when(index > 0, |group| {
-						group
-							.pt(gpui::px(5.))
-							.border_t_1()
-							.border_color(ui_theme::rgba(ui_theme::PANEL_DIVIDER))
-					});
-				for post in topic {
-					let reply = post.message_id != post.thread_id;
-					let source = post.posted_by_thread.as_deref().and_then(|thread| {
-						rows.iter().find(|row| row.thread.as_deref() == Some(thread))
-					});
-					let author = source
-						.map(participant_name)
-						.filter(|name| !name.is_empty())
-						.unwrap_or_else(|| match post.author.as_str() {
-							"/root" => "Lead",
-							path => path.strip_prefix("/root/").unwrap_or(path),
-						});
-					let heading = if reply {
-						format!("{author} replied")
-					} else if post.text.trim_end().ends_with(['?', '？']) {
-						format!("{author} asked")
-					} else {
-						author.to_owned()
-					};
-					let byline =
-						if let Some((row, thread)) = source.zip(post.posted_by_thread.as_ref()) {
-							let page = ReferencePage::Conversation {
-								key: row.key.clone(),
-								thread: thread.clone(),
-								message: Some(post.message_id.clone()),
-							};
-							self.reference_control(
-								format!("inspect-post-{}", post.message_id),
-								format!("{heading}. View agent activity"),
-								move |s, cx| s.show_reference(page.clone(), cx),
-								cx,
-							)
-							.bg(gpui::transparent_black())
-							.justify_start()
-							.px(gpui::px(0.))
-							.min_h(gpui::px(24.))
-							.child(named_heading(&post.message_id, &heading))
-							.child(workspace_symbols::icon_sized(Symbol::Forward, 11.))
-							.smooth()
-							.into_any_element()
-						} else {
-							named_heading(&post.message_id, &heading).into_any_element()
-						};
-					group = group.child(discussion_message(
-						&post.message_id,
-						byline,
-						&post.text,
-						post.truncated,
-						reply,
-					));
-				}
-				body = body.child(group);
-			}
-			for (id, member) in direct_replies {
-				body = body.child(reading_body().px(gpui::px(8.)).child(discussion_message(
-					&format!("direct-{}-{id}", turn.unwrap_or_default()),
-					named_heading(id, &format!("{} replied", member.name)).into_any_element(),
-					&member.reply,
-					false,
-					false,
-				)));
-			}
-		}
-		if let Some(turn) = turn {
-			for heading in ["Needs attention", "In progress"] {
-				let mut tasks = roster
-					.iter()
-					.filter(|(_, m)| m.state.task_section() == Some(heading))
-					.peekable();
-				if tasks.peek().is_none() {
-					continue;
-				}
+		if let Some((thread, turn)) = thread.zip(turn) {
+			if let Some(timing) = self.agent_timing(thread, turn, &roster, None, cx) {
+				body = body.child(timing);
 				populated = true;
-				body = body.child(section(heading));
-				for (id, member) in tasks {
-					let key = format!("collaborator-{turn}-{id}");
-					let (title, detail) = member.row_labels();
-					let source = rows.iter().find(|row| row.thread.as_ref() == Some(id));
-					let target = ReferencePage::Conversation {
-						key: source
-							.map(|row| row.key.clone())
-							.unwrap_or_else(|| format!("native:{}:{id}", work.id)),
-						thread: id.clone(),
-						message: None,
-					};
-					body = body.child(self.reference_row(
-						key,
-						title,
-						detail,
-						None,
-						move |s, cx| s.show_reference(target.clone(), cx),
-						cx,
-					));
-				}
+			}
+			if let Some(evidence) =
+				self.round_evidence(&work.id, (thread, turn), &topics, &roster, None, cx)
+			{
+				body = body.child(evidence);
+				populated = true;
+			}
+			if scope.is_some()
+				&& let Some(outcome) = self.outcome_row(&work.id, thread, turn, cx)
+			{
+				body = body.child(outcome);
+				populated = true;
 			}
 		}
-
+		if let Some(thread) = thread.filter(|_| !topics.is_empty()) {
+			body = body.child(index_section("Board topics", populated));
+			populated = true;
+			body = body.child(self.topic_rows(
+				&work.id,
+				thread,
+				scope.map(|(_, turn)| turn),
+				&topics,
+				cx,
+			));
+		}
 		let is_earlier = |case: &Exchange| {
 			scope.is_none()
 				&& (case.earlier
@@ -545,81 +543,39 @@ impl AgentSurface {
 		} else {
 			Vec::new()
 		};
-		let earlier = self.work_board.collaboration.earlier;
 		for historical in [false, true] {
-			let mut exchanges =
-				cases.iter().filter(|case| is_earlier(case) == historical).peekable();
+			let mut exchanges = cases
+				.iter()
+				.filter(|case| !pending_here(case) && is_earlier(case) == historical)
+				.peekable();
 			if exchanges.peek().is_none() && (!historical || previous.is_empty()) {
 				continue;
 			}
+			let heading = if historical { "Earlier discussions" } else { "Exchanges" };
+			body = body.child(index_section(heading, populated));
 			populated = true;
-			let mut list = reading_body();
 			if historical {
-				body = body.child(
-					self.reference_control(
-						"collaboration-earlier".into(),
-						"Earlier discussions".into(),
-						|s, cx| {
-							s.work_board.collaboration.earlier =
-								!s.work_board.collaboration.earlier;
-							cx.notify();
-						},
-						cx,
-					)
-					.w_full()
-					.mt(gpui::px(6.))
-					.aria_expanded(earlier)
-					.bg(gpui::transparent_black())
-					.justify_start()
-					.child(
-						ui_theme::navigation_category_label(gpui::div().flex_1())
-							.child("Earlier discussions"),
-					)
-					.child(workspace_symbols::process_chevron(
-						"earlier-discussions-chevron",
-						earlier,
-					))
-					.smooth(),
-				);
 				if let Some(thread) = thread {
 					for (turn, title) in &previous {
-						let page =
-							ReferencePage::Discussion { thread: thread.into(), turn: turn.clone() };
-						list = list.child(self.reference_row(
+						let page = ReferencePage::Discussion {
+							thread: thread.into(),
+							turn: turn.clone(),
+							title: title.clone(),
+						};
+						body = body.child(self.reference_row(
 							format!("earlier-turn-{turn}"),
 							title.clone(),
 							String::new(),
-							None,
+							Some(Symbol::NavigationChats),
 							move |s, cx| s.show_reference(page.clone(), cx),
 							cx,
 						));
 					}
 				}
-			} else {
-				body = body.child(section("Exchanges"));
 			}
 			for case in exchanges {
-				let key = case.id.clone();
-				let peer = case.to.as_ref().filter(|_| belongs(&case.from)).unwrap_or(&case.from);
-				list = list.child(
-					self.reference_row(
-						format!("collaboration-{key}"),
-						case.question
-							.as_ref()
-							.filter(|_| needs_user(case))
-							.map_or_else(|| case.title.clone(), |q| q.question.title.clone()),
-						format!("{} ({})", participant_name(peer), case.state),
-						Some(Symbol::TeamMembers),
-						move |s, cx| s.show_reference(ReferencePage::Exchange(key.clone()), cx),
-						cx,
-					),
-				);
+				body = body.child(self.exchange_row(case, belongs(&case.from), cx));
 			}
-			body = if historical {
-				body.child(ui_motion::disclosure("earlier-discussions-content", earlier, list))
-			} else {
-				body.child(list)
-			};
 		}
 		if self.work_board.collaboration.failed {
 			body = body.child(note("Could not refresh project exchanges."));
@@ -630,24 +586,181 @@ impl AgentSurface {
 			{
 				return (empty_collaboration("Loading collaborators", None), "loading");
 			}
-			return if roster.is_empty() {
-				(
-					empty_collaboration(
-						"No collaborators yet",
-						Some("Discussions and open tasks will appear here."),
-					),
-					"empty",
-				)
-			} else {
-				(empty_collaboration("No open tasks", None), "empty")
-			};
+			return (
+				empty_collaboration(
+					"No shared context yet",
+					Some("Files cited by collaborators and Board discussions appear here."),
+				),
+				"empty",
+			);
 		}
 		(body, "content")
 	}
 
-	fn conversation_reader(&self, row: &Row, rows: &[Row], message: Option<&str>) -> Div {
+	fn topic_rows(
+		&self,
+		work: &str,
+		thread: &str,
+		historical: Option<&str>,
+		topics: &[Vec<Post>],
+		cx: &mut Context<Self>,
+	) -> Div {
+		let mut body = reading_body();
+		for posts in topics {
+			let Some(first) = posts.first() else { continue };
+			let opener = first.message_id == first.thread_id;
+			let replies = posts.len() - usize::from(opener);
+			let reply_count =
+				if replies == 1 { "1 reply".to_owned() } else { format!("{replies} replies") };
+			let page = ReferencePage::Topic {
+				work: work.into(),
+				thread: thread.into(),
+				historical_turn: historical.map(str::to_owned),
+				topic: first.thread_id.clone(),
+			};
+			let title = if opener && !first.text.trim().is_empty() {
+				activity::wording::message(&first.text)
+			} else {
+				format!("#{}", first.channel_name)
+			};
+			body = body.child(self.reference_row(
+				format!("topic-{}", first.thread_id),
+				title,
+				if opener {
+					format!("#{} ({reply_count})", first.channel_name)
+				} else {
+					reply_count
+				},
+				Some(Symbol::TeamMembers),
+				move |s, cx| s.show_reference(page.clone(), cx),
+				cx,
+			));
+		}
+		body
+	}
+
+	fn board_post(
+		&self,
+		post: &Post,
+		opener: &Post,
+		rows: &[Row],
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let reply = post.message_id != post.thread_id;
+		let source = post
+			.posted_by_thread
+			.as_deref()
+			.and_then(|thread| rows.iter().find(|row| row.thread.as_deref() == Some(thread)));
+		let author = if post.author == "/root" {
+			"Lead"
+		} else {
+			source
+				.map(participant_name)
+				.filter(|name| !name.is_empty())
+				.unwrap_or_else(|| post.author.strip_prefix("/root/").unwrap_or(&post.author))
+		};
+		let heading = if let Some(ms) = board_topics::time_since_topic(post, opener) {
+			format!("{author} replied after {}", crate::ui_time::duration(ms))
+		} else if reply {
+			format!("{author} replied")
+		} else if post.text.trim_end().ends_with(['?', '？']) {
+			format!("{author} asked")
+		} else {
+			author.to_owned()
+		};
+		let byline = if let Some((row, thread)) = source.zip(post.posted_by_thread.as_ref()) {
+			let page = ReferencePage::Conversation {
+				key: row.key.clone(),
+				thread: thread.clone(),
+				message: Some(post.message_id.clone()),
+			};
+			self.reference_control(
+				format!("inspect-post-{}", post.message_id),
+				format!(
+					"{heading}. View board message: {}",
+					crate::shell::agent_surface::execution_dock::preview(&post.text, 72)
+				),
+				move |s, cx| s.show_reference(page.clone(), cx),
+				cx,
+			)
+			.bg(gpui::transparent_black())
+			.justify_start()
+			.px(gpui::px(0.))
+			.min_h(gpui::px(24.))
+			.child(named_heading(&post.message_id, &heading))
+			.child(
+				gpui::div()
+					.text_size(gpui::px(CAPTION_SIZE))
+					.text_color(ui_theme::rgb(SECONDARY))
+					.child("Source"),
+			)
+			.smooth()
+			.into_any_element()
+		} else {
+			named_heading(&post.message_id, &heading).into_any_element()
+		};
+
+		// Preserve native Markdown and its links when the entire message fits.
+		let excerpt = source
+			.filter(|_| post.text.chars().nth(240).is_some() || post.text.contains("\n\n"))
+			.map(|_| markdown::report_excerpt(&post.text))
+			.filter(|preview| !same_excerpt(preview, &markdown::plain_text(&post.text)));
+		discussion_message(&post.message_id, byline, &post.text, post.truncated, reply, excerpt)
+			.into_any_element()
+	}
+
+	fn exchange_row(&self, case: &Exchange, outgoing: bool, cx: &mut Context<Self>) -> AnyElement {
+		let key = case.id.clone();
+		let peer = case.to.as_ref().filter(|_| outgoing).unwrap_or(&case.from);
+		self.reference_row(
+			format!("collaboration-{key}"),
+			case.question
+				.as_ref()
+				.filter(|_| needs_user(case))
+				.map_or_else(|| case.title.clone(), |q| q.question.title.clone()),
+			format!("{} ({})", participant_name(peer), case.state),
+			Some(Symbol::TeamMembers),
+			move |s, cx| s.show_reference(ReferencePage::Exchange(key.clone()), cx),
+			cx,
+		)
+	}
+
+	fn outcome_row(
+		&self,
+		work: &str,
+		thread: &str,
+		turn: &str,
+		cx: &mut Context<Self>,
+	) -> Option<AnyElement> {
+		let (item, _, ended_at) = self.collaboration_outcome(thread, turn)?;
+		let request = ItemContextRequest {
+			work_id: EntityId::new(work).ok()?,
+			thread_id: EntityId::new(thread).ok()?,
+			turn_id: WireText::new(turn).ok()?,
+			item_id: WireText::new(item).ok()?,
+			cursor: None,
+			before: false,
+		};
+		let action = self.reference_link(
+			"locate-collaboration-outcome".into(),
+			"Outcome",
+			Symbol::Forward,
+			move |s, cx| s.locate_find_match(request.clone(), cx),
+			cx,
+		);
+		Some(match ended_at {
+			Some(time) => gpui::div()
+				.id("collaboration-outcome-date")
+				.child(action)
+				.hover_hint(crate::ui_time::timestamp(time))
+				.into_any_element(),
+			None => action,
+		})
+	}
+
+	fn conversation_reader(&self, row: &Row, rows: &[Row], message: &str) -> Div {
 		let name = participant_name(row);
-		let mut body = reading_body().px(gpui::px(8.)).child(reader_title(name));
+		let mut body = reading_body().child(reader_title(name));
 		if let Some(agent) = self.native_agents.lists.get(&row.work).and_then(|agents| {
 			agents.iter().find(|agent| Some(&agent.thread_id) == row.thread.as_ref())
 		}) {
@@ -668,52 +781,41 @@ impl AgentSurface {
 				);
 			}
 		}
-		if let Some(message) = message {
-			let Some((work, thread)) =
-				self.conversation_work().and_then(|w| Some((w.id, w.codex_thread_id?)))
-			else {
-				return body.child(note("This message is unavailable."));
-			};
-			let topics = self.board_topics(&work, &thread, None, rows);
-			for topic in &topics {
-				let Some(post) = topic
-					.iter()
-					.find(|p| p.message_id == message && p.posted_by_thread == row.thread)
-				else {
-					continue;
-				};
-				let mut heading = format!("Topic in #{}", post.channel_name);
-				if post.thread_id != post.message_id {
-					let author = topic
-						.iter()
-						.find(|p| p.message_id == post.thread_id)
-						.and_then(|p| p.posted_by_thread.as_ref())
-						.and_then(|id| rows.iter().find(|r| r.thread.as_ref() == Some(id)));
-					heading = match author {
-						Some(author) => format!(
-							"Reply to {} in #{}",
-							participant_name(author),
-							post.channel_name
-						),
-						None => format!("Reply in #{}", post.channel_name),
-					};
-				}
-				return body.child(discussion_message(
-					&post.message_id,
-					named_heading(&post.message_id, &heading).into_any_element(),
-					&post.text,
-					post.truncated,
-					false,
-				));
-			}
+		let Some((ReferencePage::Topic { work, thread, historical_turn, .. }, _)) =
+			self.work_board.reference_history.last()
+		else {
 			return body.child(note("This message is unavailable."));
+		};
+		let topics = self.board_topics(work, thread, historical_turn.as_deref(), rows);
+		for topic in &topics {
+			let Some(post) =
+				topic.iter().find(|p| p.message_id == message && p.posted_by_thread == row.thread)
+			else {
+				continue;
+			};
+			let mut heading = format!("Topic in #{}", post.channel_name);
+			if post.thread_id != post.message_id {
+				let author = topic
+					.iter()
+					.find(|p| p.message_id == post.thread_id)
+					.and_then(|p| p.posted_by_thread.as_ref())
+					.and_then(|id| rows.iter().find(|r| r.thread.as_ref() == Some(id)));
+				heading = match author {
+					Some(author) =>
+						format!("Reply to {} in #{}", participant_name(author), post.channel_name),
+					None => format!("Reply in #{}", post.channel_name),
+				};
+			}
+			return body.child(discussion_message(
+				&post.message_id,
+				named_heading(&post.message_id, &heading).into_any_element(),
+				&post.text,
+				post.truncated,
+				false,
+				None,
+			));
 		}
-		let (state, summary) = self.work_activity_summary(row);
-		body = body.child(section(&state));
-		if !summary.is_empty() && summary != state {
-			body = body.child(markdown::render(&summary, &format!("agent-preview-{}", row.key)));
-		}
-		body
+		body.child(note("This message is unavailable."))
 	}
 
 	fn read_sidebar_source(&mut self, req: ItemContextRequest, cx: &mut Context<Self>) {
@@ -805,6 +907,19 @@ impl AgentSurface {
 					before: false,
 				})
 			});
+		if let Some(request) = anchor.as_ref().filter(|request| {
+			case.question.as_ref().is_some_and(|q| q.pending)
+				&& self.conversation_matches(request.work_id.as_str(), request.thread_id.as_str())
+		}) {
+			let request = request.clone();
+			body = body.child(self.reference_link(
+				"locate-collaboration-question".into(),
+				"Show question in chat",
+				Symbol::Forward,
+				move |s, cx| s.locate_find_match(request.clone(), cx),
+				cx,
+			));
+		}
 		let key = case.id.clone();
 		let open = self.work_board.collaboration.source_open.as_deref() == Some(&key);
 		body = body.child(
@@ -933,6 +1048,7 @@ fn discussion_message(
 	text: &str,
 	truncated: bool,
 	reply: bool,
+	excerpt: Option<String>,
 ) -> impl IntoElement + use<> {
 	let mut block = reading_body()
 		.gap(gpui::px(2.))
@@ -944,7 +1060,13 @@ fn discussion_message(
 				.border_color(ui_theme::rgba(ui_theme::PANEL_DIVIDER))
 		})
 		.child(byline);
-	if text.is_empty() {
+	if let Some(preview) = excerpt {
+		let preview = if preview.ends_with('…') { preview } else { format!("{preview}…") };
+		block = block.child(crate::shell::agent_surface::selectable_text::SelectableText::plain(
+			format!("discussion-excerpt-{id}"),
+			preview,
+		));
+	} else if text.is_empty() {
 		block = block.child(note("The post text is unavailable."));
 	} else {
 		block = block.child(markdown::render(text, &format!("discussion-text-{id}")));
@@ -955,14 +1077,22 @@ fn discussion_message(
 	block
 }
 
-fn section(title: &str) -> impl IntoElement {
+fn index_section(title: &str, follows_content: bool) -> Stateful<Div> {
+	section(title).when(follows_content, |heading| {
+		heading
+			.mt(gpui::px(ui_theme::WORKSPACE_GUTTER))
+			.border_t_1()
+			.border_color(ui_theme::rgb(SECONDARY).opacity(0.25))
+	})
+}
+
+fn section(title: &str) -> Stateful<Div> {
 	gpui::div()
 		.id(SharedString::from(format!("reference-heading-{title}")))
 		.role(Role::Heading)
 		.aria_level(3)
 		.aria_label(title.to_owned())
 		.pt(gpui::px(ui_theme::NAVIGATION_SECTION_GAP / 2.))
-		.px(gpui::px(3.))
 		.font_weight(FontWeight::MEDIUM)
 		.text_size(gpui::px(CAPTION_SIZE))
 		.text_color(ui_theme::rgb(SECONDARY))

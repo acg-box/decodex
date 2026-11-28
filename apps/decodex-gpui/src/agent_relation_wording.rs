@@ -1,42 +1,11 @@
 //! Complete source sentences for the graph, independent of its pixel width.
-use std::mem;
-
-use pulldown_cmark::{Event, Options, Parser, TagEnd};
+use crate::shell::agent_surface::markdown;
 use unicode_segmentation::UnicodeSegmentation;
 
 /// Keep one complete thought. Markdown headings and lead-ins do not displace
 /// the first content paragraph. The full response remains in native history.
 pub(in super::super) fn message(source: &str) -> String {
-	let mut paragraph = String::new();
-	let mut fallback = String::new();
-
-	for event in Parser::new_ext(source, Options::ENABLE_TABLES) {
-		match event {
-			Event::Text(text) | Event::Code(text) => paragraph.push_str(&text),
-			Event::SoftBreak | Event::HardBreak => paragraph.push(' '),
-			Event::End(TagEnd::Heading(_)) => {
-				fallback = mem::take(&mut paragraph);
-			},
-			Event::End(TagEnd::Paragraph | TagEnd::Item | TagEnd::CodeBlock) => {
-				if paragraph.trim().is_empty() {
-					continue;
-				}
-				if paragraph.trim_end().ends_with(':') {
-					fallback = mem::take(&mut paragraph);
-				} else {
-					break;
-				}
-			},
-			_ => {},
-		}
-	}
-
-	if paragraph.trim().is_empty() {
-		paragraph = fallback;
-	}
-
-	let paragraph = paragraph.split_whitespace().collect::<Vec<_>>().join(" ");
-
+	let paragraph = markdown::first_paragraph(source);
 	paragraph.unicode_sentences().next().unwrap_or(&paragraph).trim().to_owned()
 }
 

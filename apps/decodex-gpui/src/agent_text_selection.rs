@@ -234,14 +234,14 @@ impl RenderOnce for DocumentView {
 		let range = state.read(cx).range(&self.document.text);
 		let has_ask = self.document.ask.is_some();
 		let action = self.document.ask.clone().and_then(|ask| {
-			if range.is_empty() || state.read(cx).dragging {
+			if range.is_empty() || state.read(cx).dragging || !focus.is_focused(window) {
 				return None;
 			}
 			let position = state.read(cx).action_position?;
 			let quote = self.document.text[range].to_owned();
 			Some((position, quote, ask))
 		});
-		let action = selection_action(popup_id, action, parent, state.clone());
+		let action = selection_action(popup_id, action, parent, state.clone(), window);
 		let text: SharedString = self.document.text.into();
 		let scope = self.document.scope;
 		let _ = scope.set(Scope {
@@ -288,25 +288,15 @@ impl RenderOnce for DocumentView {
 				cx.stop_propagation();
 			})
 			.key_context("MessageSelection")
-			.on_key_down(move |event: &KeyDownEvent, _, cx| {
-				let k = &event.keystroke;
-				if !k.modifiers.platform
-					|| k.modifiers.shift
-					|| k.modifiers.alt
-					|| k.modifiers.control
-				{
-					return;
-				}
-				match k.key.as_str() {
-					"c" => keys.get().expect("selection scope").copy(cx),
-					"a" => state.update(cx, |s, cx| {
-						s.anchor = 0;
-						s.head = text.len();
-						cx.notify();
-					}),
-					_ => return,
-				}
-				cx.stop_propagation();
+			.on_action(move |_: &crate::composer_input::Copy, _, cx| {
+				keys.get().expect("selection scope").copy(cx);
+			})
+			.on_action(move |_: &crate::composer_input::SelectAll, _, cx| {
+				state.update(cx, |s, cx| {
+					s.anchor = 0;
+					s.head = text.len();
+					cx.notify();
+				});
 			})
 			.on_action(move |_: &crate::shell::OpenSideChat, w, cx| {
 				let scope = ask_scope.get().expect("selection scope");
@@ -329,8 +319,26 @@ fn selection_action(
 	action: Option<(Point<Pixels>, String, AskSelection)>,
 	parent: gpui::AnyWindowHandle,
 	state: Entity<Selection>,
+	window: &Window,
 ) -> impl IntoElement {
+	const LABEL: &str = "Ask in side chat";
 	let visible = action.is_some();
+	let width = if visible {
+		let line = window.text_system().shape_line(
+			LABEL.into(),
+			gpui::px(crate::ui_theme::COMPACT_BODY_SIZE),
+			&[gpui::TextRun {
+				len: LABEL.len(),
+				font: gpui::font(crate::ui_theme::FONT_FAMILY),
+				..Default::default()
+			}],
+			None,
+		);
+		// The one-row panel needs just the row insets and its half-point outline.
+		gpui::px(f32::from(line.width).ceil() + 2. * crate::ui_theme::POPOVER_PADDING + 1.)
+	} else {
+		gpui::px(0.)
+	};
 	let position = action.as_ref().map(|(position, _, _)| *position).unwrap_or_default();
 	let dismiss = state.downgrade();
 	gpui::deferred(
@@ -339,7 +347,7 @@ fn selection_action(
 			.offset(gpui::point(gpui::px(0.), gpui::px(8.)))
 			.snap_to_window_with_margin(gpui::px(8.))
 			.child(
-				gpui::div().w(gpui::px(168.)).child(
+				gpui::div().w(width).child(
 					crate::ui_motion::popover_lazy(id, visible, move |_, _| {
 						let Some((_, quote, ask)) = &action else {
 							return gpui::div().into_any_element();
@@ -350,8 +358,9 @@ fn selection_action(
 						let key_quote = quote.clone();
 						crate::ui_theme::menu_row("ask-selected-text", true)
 							.debug_selector(|| "ask-selected-text".into())
-							.aria_label("Ask in side chat")
-							.child("Ask in side chat")
+							.aria_label(LABEL)
+							.whitespace_nowrap()
+							.child(LABEL)
 							.on_mouse_down(MouseButton::Left, move |_, window, cx| {
 								ask_from_selection(&mouse_ask, &mouse_quote, parent, window, cx);
 								cx.stop_propagation();
@@ -364,6 +373,8 @@ fn selection_action(
 							})
 							.into_any_element()
 					})
+					// The selection keeps keyboard focus while the pointer action is visible.
+					.preview()
 					.on_dismiss(move |cx| {
 						let _ = dismiss.update(cx, |state, cx| {
 							state.action_position = None;
