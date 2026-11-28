@@ -683,6 +683,22 @@
         "native_source_inclusion": "qualification.json#retained_source_inclusion includes all parent-question/completion source binding paths against the current main runtime baseline.",
         "limits": "Synthetic loopback native execution and local tests; no new live model judgment or installed-app acceptance."
       }
+    },
+    "local_message_board": {
+      "contract": "Native Codex owns the disk-backed Board, posts and replies for each agent tree. Decodex reads the local Board in sequence order to display the topic, reply and author. A cold resume preserves the original topic. Explicit native configuration remains authoritative.",
+      "source_symbols": [
+        "crates/decodex-runtime/src/account_launch/process.rs#APP_SERVER_ARGS",
+        "crates/decodex-runtime/src/agent/native_settings.rs#use_board_default",
+        "crates/decodex-runtime/src/native_board.rs#read",
+        "crates/decodex-runtime/src/native_board.rs#page"
+      ],
+      "qualification_checks": [
+        "crates/decodex-runtime/src/account_launch/agent_process_native_project_work_tests.rs#installed_board_reply_uses_original_topic_after_restart",
+        "crates/decodex-runtime/src/agent/tests/native_settings.rs#board_default_respects_native_selection_at_start_and_cold_resume",
+        "crates/decodex-runtime/src/native_board.rs#board_cursor_survives_a_reopen_and_excludes_other_trees"
+      ],
+      "delivery_reference": "https://github.com/acg-box/decodex/commit/fef60f2e92bf4fc2c091e3307f4413f3edb75d62",
+      "behavior_limits": "The isolated lifecycle fixture uses one author and a loopback provider. The original two-agent desktop evidence belongs to the linked delivery."
     }
   },
   "retained_behavior_contracts": [
@@ -941,7 +957,7 @@
     },
     {
       "id": "exact-native-history",
-      "contract": "Use exact native thread, turn and item identities; preserve complete large patch pages through cold restart, expire old process continuations and never replay inference to read history. Compaction checkpoints retain complete history and reject partial output. Accept the native turn-boundary field spellings before matching turns and timestamps in the mixed timeline.",
+      "contract": "Use exact native thread, turn and item identities; preserve complete large patch pages through cold restart, expire old process continuations and never replay inference to read history. Compaction checkpoints retain complete history and reject partial output. Accept the native turn-boundary field spellings before matching turns and timestamps in the mixed timeline. A declined command remains readable under its original item ID after restart.",
       "source_symbols": [
         "crates/decodex-codex/src/app_server_client/history.rs#thread_read_turn",
         "crates/decodex-codex/src/app_server_client/history.rs#thread_read_turn_items",
@@ -951,7 +967,8 @@
         "account_launch::agent_process::native_tests::detail::installed_native_patch_pages_survive_cold_restart_without_replay",
         "account_launch::agent_process::native_tests::compaction::installed_native_streams_auto_compaction_and_resumes_its_checkpoint",
         "account_launch::agent_process::native_tests::compaction::installed_native_preserves_prompt_before_compaction_error_and_after_restart",
-        "account_launch::agent_process::native_tests::compaction::installed_native_discards_partial_compaction_output_after_restart"
+        "account_launch::agent_process::native_tests::compaction::installed_native_discards_partial_compaction_output_after_restart",
+        "account_launch::agent_process::native_tests::reviewer::installed_native_live_reviewer_changes_only_the_selected_turn"
       ],
       "qualification": "automations/upstream/qualification.json#retained_consumers",
       "source_review_evidence": "Current source impact is in current-review.json; superseded review numbers/qualification remain in Git history."

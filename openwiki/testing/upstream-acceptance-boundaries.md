@@ -112,6 +112,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_project_work_tests.rs
   - id: openwiki-source-21c0991a686dae637a3616cd
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_read_state_tests.rs
+  - id: openwiki-source-6679c12e96a1c58567fe0162
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_realtime_tests.rs
   - id: openwiki-source-608d1b60a8c7a9cd37e8dda4
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_reasoning_tests.rs
   - id: openwiki-source-ddbcad5474bc4311e2556223
@@ -236,10 +238,10 @@ sources:
     resource: repo://scripts/macos/version_codex_source.py
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-11-26T20:21:35.384Z" }
+generated: { by: "codex", at: "2026-11-27T20:18:12.999Z" }
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-26T20:21:35.384Z
+    at: 2026-11-27T20:18:12.999Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -270,6 +272,10 @@ Workflow-only maintenance uses the checkpoint and portfolio checks in `cargo +st
 Read the development lock, [current source review](../../automations/upstream/current-review.json) and [current qualification](../../automations/upstream/qualification.json) for the fixed target, exact CLI/helpers/schema, executed identities and limits. Keep source review, source-test execution, exact production-artifact tests, delivery and installed acceptance separate. Current run counts and hashes belong in those records, not repeated across Wiki pages.
 
 The retained MCP fixture reads same-name registrations from two environments through the signed CLI and executor. The voice start fixture checks that V3 calls defer voice selection to the backend and honor managed policy. The cold history fixture reads native turn boundaries and retained tool context before continuing the conversation. The [current qualification](../../automations/upstream/qualification.json) identifies the executions for the selected artifact.
+
+The command approval fixture keeps the item ID from the original request. After the user declines the command and the native process restarts, the Decodex history reader must return that item with the status `declined`. This check uses the saved thread and turn IDs. [Reviewer fixture](../../crates/decodex-runtime/src/account_launch/agent_process_native_reviewer_tests.rs)
+
+The Board fixture opens a topic, restarts the native process with the production arguments, and posts a reply from the same agent. The Decodex Board reader must return the reply after the saved cursor with the original topic ID and author thread ID. The fixture uses a loopback provider. The earlier two-agent desktop check has its own delivery record. [Board fixture](../../crates/decodex-runtime/src/account_launch/agent_process_native_project_work_tests.rs) and [two-agent delivery](https://github.com/acg-box/decodex/commit/fef60f2e92bf4fc2c091e3307f4413f3edb75d62).
 
 The desktop sends only the root thread ID when it requests native deletion. The [fork fixture](../../crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs) checks that Codex refuses to delete a parent with a retained attachment. The [deletion fixture](../../crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs) checks that deleting an eligible conversation removes its local history and preserves an independent conversation after restart. Both fixtures use disposable native homes.
 
